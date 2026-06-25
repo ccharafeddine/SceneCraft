@@ -14,7 +14,7 @@ import type {
   JobStatus,
   VideoRequest,
 } from "./types";
-import { buildImageGraph } from "./graph";
+import { buildImageGraph, LocalUnsupportedError } from "./graph";
 import { SimulatedJobs } from "./stub";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8188";
@@ -43,10 +43,21 @@ export class LocalBackend implements GenerationBackend {
 
   async generateImage(req: ImageRequest): Promise<JobHandle> {
     const id = nextId();
+
+    // Build the graph from the cast conditioning. If the cast needs a path
+    // FLUX.1 local can't run (multi-reference), fail with a clear, actionable
+    // message instead of silently generating an image without the character.
+    let graph;
+    try {
+      graph = buildImageGraph(req);
+    } catch (err) {
+      const message = err instanceof LocalUnsupportedError ? err.message : String(err);
+      this.jobs.set(id, { id, state: "error", progress: 0, error: message });
+      return { id, kind: "image" };
+    }
+
     const clientId = crypto.randomUUID();
     this.jobs.set(id, { id, state: "queued", progress: 0, message: "Submitting" });
-
-    const graph = buildImageGraph(req);
     this.openProgressSocket(id, clientId);
 
     // Fire the (blocking) Rust round-trip; resolve/reject updates job state.

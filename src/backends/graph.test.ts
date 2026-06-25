@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildImageGraph, type GraphNode } from "./graph";
+import { buildImageGraph, LocalUnsupportedError, type GraphNode } from "./graph";
 import type { ImageRequest } from "./types";
 
-const req: ImageRequest = {
+const base: Omit<ImageRequest, "conditioning"> = {
   prompt: "a serene mountain lake at dawn",
-  conditioning: { kind: "none" },
   baseModel: "flux1-dev",
   width: 832,
   height: 576,
@@ -12,50 +11,96 @@ const req: ImageRequest = {
   seed: 42,
 };
 
-describe("buildImageGraph (FLUX.1 template + registry)", () => {
-  const g = buildImageGraph(req);
-  const byClass = (c: string): GraphNode =>
-    Object.values(g).find((n) => n.class_type === c)!;
+const byClass = (g: Record<string, GraphNode>, c: string): GraphNode | undefined =>
+  Object.values(g).find((n) => n.class_type === c);
+
+describe("buildImageGraph — 0 characters (none) = plain text-to-image", () => {
+  const g = buildImageGraph({ ...base, conditioning: { kind: "none" } });
 
   it("injects registry model filenames (basenamed to on-disk names)", () => {
-    expect(byClass("UnetLoaderGGUF").inputs.unet_name).toBe("flux1-dev-Q4_K_S.gguf");
-    expect(byClass("DualCLIPLoaderGGUF").inputs.clip_name1).toBe(
+    expect(byClass(g, "UnetLoaderGGUF")!.inputs.unet_name).toBe("flux1-dev-Q4_K_S.gguf");
+    expect(byClass(g, "DualCLIPLoaderGGUF")!.inputs.clip_name1).toBe(
       "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
     );
-    expect(byClass("DualCLIPLoaderGGUF").inputs.clip_name2).toBe("clip_l.safetensors");
-    // registry source is split_files/vae/ae.safetensors -> basename
-    expect(byClass("VAELoader").inputs.vae_name).toBe("ae.safetensors");
+    expect(byClass(g, "DualCLIPLoaderGGUF")!.inputs.clip_name2).toBe("clip_l.safetensors");
+    expect(byClass(g, "VAELoader")!.inputs.vae_name).toBe("ae.safetensors");
   });
 
-  it("applies request params (size, steps, seed, prompt)", () => {
-    expect(byClass("EmptySD3LatentImage").inputs.width).toBe(832);
-    expect(byClass("EmptySD3LatentImage").inputs.height).toBe(576);
-    expect(byClass("KSampler").inputs.steps).toBe(22);
-    expect(byClass("KSampler").inputs.seed).toBe(42);
-
-    const fg = byClass("FluxGuidance");
+  it("applies request params and the plain prompt", () => {
+    expect(byClass(g, "EmptySD3LatentImage")!.inputs.width).toBe(832);
+    expect(byClass(g, "KSampler")!.inputs.steps).toBe(22);
+    expect(byClass(g, "KSampler")!.inputs.seed).toBe(42);
+    const fg = byClass(g, "FluxGuidance")!;
     const posId = (fg.inputs.conditioning as [string, number])[0];
-    expect(g[posId].class_type).toBe("CLIPTextEncode");
     expect(g[posId].inputs.text).toBe("a serene mountain lake at dawn");
   });
 
+  it("has NO LoRA node and the sampler reads straight from the UNet loader", () => {
+    expect(byClass(g, "LoraLoaderModelOnly")).toBeUndefined();
+    const unetId = Object.entries(g).find(([, n]) => n.class_type === "UnetLoaderGGUF")![0];
+    expect(byClass(g, "KSampler")!.inputs.model).toEqual([unetId, 0]);
+  });
+
   it("preserves the proven FLUX settings (cfg 1.0, euler/simple, guidance 3.5)", () => {
-    const ks = byClass("KSampler");
+    const ks = byClass(g, "KSampler")!;
     expect(ks.inputs.cfg).toBe(1);
     expect(ks.inputs.sampler_name).toBe("euler");
     expect(ks.inputs.scheduler).toBe("simple");
-    expect(byClass("FluxGuidance").inputs.guidance).toBe(3.5);
+    expect(byClass(g, "FluxGuidance")!.inputs.guidance).toBe(3.5);
+  });
+});
+
+describe("buildImageGraph — 1 trained character (lora) injects LoRA + trigger", () => {
+  // Hypothetical trained character (no real .safetensors exists yet — JSON only).
+  const g = buildImageGraph({
+    ...base,
+    conditioning: {
+      kind: "lora",
+      loraPath: "joe/lora/joe.safetensors",
+      trigger: "j03_token",
+      strength: 0.85,
+    },
   });
 
-  it("does not mutate the imported template across calls", () => {
-    const a = buildImageGraph({ ...req, prompt: "first" });
-    const b = buildImageGraph({ ...req, prompt: "second" });
-    const textOf = (gr: typeof a) => {
-      const fg = Object.values(gr).find((n) => n.class_type === "FluxGuidance")!;
-      const id = (fg.inputs.conditioning as [string, number])[0];
-      return gr[id].inputs.text;
-    };
-    expect(textOf(a)).toBe("first");
-    expect(textOf(b)).toBe("second");
+  it("splices a LoraLoaderModelOnly between the UNet loader and the sampler", () => {
+    const lora = byClass(g, "LoraLoaderModelOnly");
+    expect(lora).toBeDefined();
+    const unetId = Object.entries(g).find(([, n]) => n.class_type === "UnetLoaderGGUF")![0];
+    // LoRA reads the UNet; sampler now reads the LoRA, not the UNet directly.
+    expect(lora!.inputs.model).toEqual([unetId, 0]);
+    const loraId = Object.entries(g).find(([, n]) => n.class_type === "LoraLoaderModelOnly")![0];
+    expect(byClass(g, "KSampler")!.inputs.model).toEqual([loraId, 0]);
+  });
+
+  it("uses the LoRA basename and strength from the registry/character", () => {
+    const lora = byClass(g, "LoraLoaderModelOnly")!;
+    expect(lora.inputs.lora_name).toBe("joe.safetensors");
+    expect(lora.inputs.strength_model).toBe(0.85);
+  });
+
+  it("auto-prepends the trigger token to the prompt (user never types it)", () => {
+    const fg = byClass(g, "FluxGuidance")!;
+    const posId = (fg.inputs.conditioning as [string, number])[0];
+    expect(g[posId].inputs.text).toBe("j03_token, a serene mountain lake at dawn");
+  });
+});
+
+describe("buildImageGraph — multi-reference is rejected on FLUX.1 local", () => {
+  it("throws LocalUnsupportedError for a single untrained character / 2+ characters", () => {
+    expect(() =>
+      buildImageGraph({
+        ...base,
+        conditioning: { kind: "multiref", refImagePaths: ["mia/refs/01.jpg"] },
+      }),
+    ).toThrow(LocalUnsupportedError);
+  });
+
+  it("the message points at training or the cloud backend", () => {
+    try {
+      buildImageGraph({ ...base, conditioning: { kind: "multiref", refImagePaths: [] } });
+      throw new Error("should have thrown");
+    } catch (e) {
+      expect(String((e as Error).message)).toMatch(/Train the character|Cloud backend/);
+    }
   });
 });

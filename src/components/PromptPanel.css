@@ -38,6 +38,23 @@
   border: 1px solid var(--border);
 }
 
+.prompt__warning {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #8a5a00;
+  background: rgba(220, 150, 0, 0.12);
+  border: 1px solid rgba(220, 150, 0, 0.35);
+  border-radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .prompt__warning {
+    color: #e8b552;
+  }
+}
+
 .prompt__box {
   width: 100%;
   resize: vertical;

@@ -40,6 +40,15 @@ export function PromptPanel(props: PromptPanelProps) {
   const canGenerate = () =>
     prompt().trim().length > 0 || props.activeCharacters.length > 0;
 
+  // FLUX.1 local can only generate a character that has a trained LoRA, and only
+  // one at a time. Anything else (untrained, or 2+) needs cloud/16GB+ FLUX.2.
+  const localBlocked = () => {
+    const cast = props.activeCharacters;
+    if (cast.length === 0) return false;
+    if (cast.length === 1 && cast[0].lora_path) return false;
+    return true;
+  };
+
   function submit() {
     if (!canGenerate()) return;
     const size = SIZE_PRESETS[sizeIdx()];
@@ -64,8 +73,8 @@ export function PromptPanel(props: PromptPanelProps) {
 
   return (
     <section class="prompt">
-      {/* Active cast: characters here are auto-included. The user never types
-          trigger tokens; real injection/conditioning is wired in Step 7. */}
+      {/* Active cast is auto-injected into the generation by routing; the user
+          never types trigger tokens. */}
       <div class="prompt__cast">
         <Show
           when={props.activeCharacters.length > 0}
@@ -77,6 +86,14 @@ export function PromptPanel(props: PromptPanelProps) {
           </For>
         </Show>
       </div>
+
+      <Show when={localBlocked()}>
+        <p class="prompt__warning">
+          FLUX.1 (local) can't render this cast: a character needs a trained LoRA, and
+          only one at a time. Untrained or 2+ characters need the Cloud backend (FLUX.2).
+          Train the character, or generate with none active for plain text-to-image.
+        </p>
+      </Show>
 
       <textarea
         class="prompt__box"

@@ -231,7 +231,17 @@ export function CharacterEditor(props: CharacterEditorProps) {
                     <span class="field-row__label">LoRA status</span>
                     <Show
                       when={c().lora_path}
-                      fallback={<span class="badge badge--none">Not trained</span>}
+                      fallback={
+                        <>
+                          <span class="badge badge--none">Train to use</span>
+                          <p class="field-hint">
+                            Not trained. On FLUX.1 (local) this character can't be applied to a
+                            generation until its LoRA is trained — until then it's blocked rather
+                            than producing a wrong image. (Multi-reference for untrained characters
+                            needs the Cloud backend / FLUX.2.)
+                          </p>
+                        </>
+                      }
                     >
                       <span class="badge badge--ok">Trained</span>
                     </Show>
