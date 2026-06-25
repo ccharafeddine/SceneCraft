@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" alt="Scenecraft" width="360" />
+</p>
+
 # Scenecraft
 
 A standalone Mac/Windows desktop app for generating photorealistic or stylized images and videos of reusable **characters**. Create a character once from a 20-30+ image album, train it, then generate that character (or several together) doing anything, anywhere, with maximum identity fidelity. Runs **fully local** when toggled on, or against cloud APIs with your own keys.
@@ -153,23 +157,24 @@ Pick the path for your card. **On 8GB (RTX 3070), use FLUX.1 dev (GGUF Q4_K_S).*
 
 #### 8GB (RTX 3070): FLUX.1 dev, GGUF Q4_K_S
 
-FLUX.1 uses a T5 text encoder and the FLUX.1 VAE. On 8GB you load a quantized GGUF build via city96's loader node.
+FLUX.1 uses **two** text encoders (CLIP-L + T5) and the FLUX.1 VAE. On 8GB you load a quantized GGUF build via city96's loader node.
 
 1. Install the GGUF custom node from `ComfyUI/custom_nodes/`:
    ```bash
    git clone https://github.com/city96/ComfyUI-GGUF.git
    pip install -r ComfyUI-GGUF/requirements.txt
    ```
-2. Download three files into three folders:
+2. Download four files into three folders (the verified 8GB set):
    ```
    ComfyUI/models/
-     unet/            flux1-dev-Q4_K_S.gguf        # ~6.8GB diffusion model (GGUF)
-     text_encoders/   <quantized T5 xxl>           # GGUF or FP8 T5 encoder (older ComfyUI: clip/)
-     vae/             ae.safetensors               # FLUX.1 VAE
+     unet/            flux1-dev-Q4_K_S.gguf             # ~6.34GB diffusion model (GGUF)
+     text_encoders/   t5-v1_1-xxl-encoder-Q5_K_M.gguf   # ~3.15GB quantized T5 (NOT fp16 ~9GB)
+     text_encoders/   clip_l.safetensors                # ~235MB second encoder (FLUX is dual-encoder)
+     vae/             ae.safetensors                    # ~335MB FLUX.1 VAE
    ```
-   Use **Unet Loader (GGUF)** for the diffusion model and the GGUF/quantized **CLIP/T5 loader** for the encoder.
+   (Older ComfyUI puts encoders in `clip/` instead of `text_encoders/`.) Use **Unet Loader (GGUF)** for the diffusion model and **DualCLIPLoader (GGUF)** (type `flux`) for the two encoders.
 
-> Exact filenames and download links change. Pull the current files from the [city96/FLUX.1-dev-gguf model card](https://huggingface.co/city96/FLUX.1-dev-gguf) (and a quantized T5 encoder card) at build time rather than hardcoding them here.
+> Exact filenames/links change — pull current ones at build time. Sources: diffusion model from the [city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf) card; the T5 GGUF from [city96/t5-v1_1-xxl-encoder-gguf](https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf); `clip_l.safetensors` from [comfyanonymous/flux_text_encoders](https://huggingface.co/comfyanonymous/flux_text_encoders); and the FLUX.1 VAE `ae.safetensors` from the **ungated** [Comfy-Org/z_image_turbo](https://huggingface.co/Comfy-Org/z_image_turbo) mirror at `split_files/vae/ae.safetensors` (the official Black Forest Labs FLUX.1 repos gate the VAE behind a login).
 
 **Operational notes for 8GB (important):**
 - Launch ComfyUI with `--lowvram` (see step 5).

@@ -1,0 +1,9 @@
+<svg width="520" height="140" viewBox="0 0 520 140" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Scenecraft logo</title>
+  <desc>Two overlapping rounded square frames with transparent centers (orange back, white front) beside the lowercase wordmark scenecraft.</desc>
+  <g transform="translate(20,28)">
+    <rect x="6" y="6" width="60" height="60" rx="11" fill="none" stroke="#ff5400" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="34" y="34" width="60" height="60" rx="11" fill="none" stroke="#ededed" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+  <text x="150" y="88" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="52" font-weight="500" fill="#ededed">scene<tspan fill="#9aa0a0" font-weight="400">craft</tspan></text>
+</svg>

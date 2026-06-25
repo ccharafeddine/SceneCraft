@@ -1,0 +1,7 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Scenecraft app icon</title>
+  <desc>Two overlapping rounded square frames with transparent centers, an orange back frame and a white front frame, on a dark slate rounded tile.</desc>
+  <rect x="0" y="0" width="512" height="512" rx="115" fill="#464b4b"/>
+  <rect x="120" y="120" width="190" height="190" rx="40" fill="none" stroke="#ff5400" stroke-width="28" stroke-linejoin="round"/>
+  <rect x="202" y="202" width="190" height="190" rx="40" fill="none" stroke="#ededed" stroke-width="28" stroke-linejoin="round"/>
+</svg>
