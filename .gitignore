@@ -1,0 +1,27 @@
+# Scenecraft user data (never commit: personal likeness data, LoRA weights, outputs)
+characters/
+outputs/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+src-tauri/target/
+
+# Local config / secrets
+.env
+.env.*
+*.local
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

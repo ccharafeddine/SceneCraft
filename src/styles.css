@@ -1,0 +1,69 @@
+/*
+ * Scenecraft global theme.
+ * Light is the default; dark overrides via prefers-color-scheme.
+ * All colors flow through custom properties so components never hardcode them.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+
+  /* Text */
+  --text: #18181b;
+  --text-muted: #6b7280;
+
+  /* Lines + accent */
+  --border: #e4e4e7;
+  --accent: #2f6feb;
+  --accent-text: #ffffff;
+
+  /* Type */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color: var(--text);
+  background-color: var(--bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e10;
+    --surface: #1a1a1d;
+    --surface-raised: #232327;
+    --text: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --border: #2a2a2e;
+    --accent: #5b8def;
+    --accent-text: #0e0e10;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
