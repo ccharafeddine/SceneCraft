@@ -1,4 +1,5 @@
 mod characters;
+mod comfy;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,6 +16,8 @@ pub fn run() {
             characters::set_thumb,
             characters::get_thumbnail,
             characters::get_ref_image,
+            comfy::comfy_health,
+            comfy::comfy_generate_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

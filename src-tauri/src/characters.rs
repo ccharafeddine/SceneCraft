@@ -174,7 +174,7 @@ fn unique_name(dir: &Path, src: &Path) -> String {
 }
 
 /// Standard base64 (with padding), dependency-free.
-fn base64_encode(input: &[u8]) -> String {
+pub(crate) fn base64_encode(input: &[u8]) -> String {
     const TABLE: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
@@ -201,7 +201,7 @@ fn base64_encode(input: &[u8]) -> String {
 
 /// Guess an image MIME from magic bytes so a JPEG copied into `thumb.png`
 /// still gets the right data-URL type.
-fn sniff_mime(bytes: &[u8]) -> &'static str {
+pub(crate) fn sniff_mime(bytes: &[u8]) -> &'static str {
     if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
         "image/png"
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
