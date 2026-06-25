@@ -21,7 +21,7 @@ export type Conditioning =
 export interface ImageRequest {
   prompt: string;
   conditioning: Conditioning;
-  baseModel: string; // e.g. "flux2-dev"
+  baseModel: string; // "flux1-dev" (local default) or "flux2-dev" (cloud/16GB+)
   width: number;
   height: number;
   steps: number;

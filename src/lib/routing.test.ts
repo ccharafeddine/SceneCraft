@@ -10,7 +10,7 @@ function mkChar(id: string, over: Partial<Character> = {}): Character {
     trigger: `${id}_token`,
     lora_path: null,
     lora_strength: 0.9,
-    base_model: "flux2-dev",
+    base_model: "flux1-dev",
     ref_images: [],
     created_at: "2026-01-01T00:00:00Z",
     ...over,

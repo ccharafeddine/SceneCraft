@@ -42,7 +42,8 @@ pub struct Character {
 const ALLOWED_IMAGE_EXTS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff", "tif", "heic", "avif",
 ];
-const DEFAULT_BASE_MODEL: &str = "flux2-dev";
+// Local 8GB default. FLUX.2 ("flux2-dev") is selected only on the cloud/16GB+ path.
+const DEFAULT_BASE_MODEL: &str = "flux1-dev";
 const DEFAULT_LORA_STRENGTH: f32 = 0.9;
 
 // ---------------------------------------------------------------------------
@@ -425,7 +426,7 @@ mod tests {
         let back: Character = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, "joe");
         assert_eq!(back.lora_path, None);
-        assert_eq!(back.base_model, "flux2-dev");
+        assert_eq!(back.base_model, "flux1-dev");
         assert_eq!(back.lora_strength, 0.9);
         assert!(back.ref_images.is_empty());
     }

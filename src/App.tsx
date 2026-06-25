@@ -72,7 +72,7 @@ function App() {
     return {
       prompt: input.prompt,
       conditioning: routeConditioning(activeCharacters()),
-      baseModel: "flux2-dev",
+      baseModel: "flux1-dev",
       width: input.width,
       height: input.height,
       steps: input.steps,
@@ -83,7 +83,7 @@ function App() {
     return {
       prompt: input.prompt,
       conditioning: routeConditioning(activeCharacters()),
-      baseModel: "flux2-dev",
+      baseModel: "flux1-dev",
       width: input.width,
       height: input.height,
       steps: input.steps,
