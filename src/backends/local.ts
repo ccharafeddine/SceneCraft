@@ -49,6 +49,11 @@ export class LocalBackend implements GenerationBackend {
     this.endpoint = endpoint;
   }
 
+  /** Point at a different ComfyUI endpoint (from Settings). */
+  setEndpoint(url: string) {
+    this.endpoint = url.trim() || DEFAULT_ENDPOINT;
+  }
+
   async generateImage(req: ImageRequest): Promise<JobHandle> {
     const id = nextId("img");
     try {

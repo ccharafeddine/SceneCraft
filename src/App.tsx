@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { CastPanel } from "./components/CastPanel";
 import { CharacterEditor } from "./components/CharacterEditor";
 import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
@@ -15,6 +15,7 @@ import type {
 } from "./backends/types";
 import { routeConditioning } from "./lib/routing";
 import { defaultLocalImageModel } from "./lib/models";
+import { checkComfy } from "./lib/comfy";
 import {
   createCharacter,
   listCharacters,
@@ -43,10 +44,37 @@ function App() {
     localStorage.setItem("backendMode", mode);
   }
 
-  const localBackend = new LocalBackend();
+  // ComfyUI endpoint (persisted). The app never manages ComfyUI; it talks to
+  // whatever endpoint is configured here.
+  const [comfyEndpoint, setComfyEndpointRaw] = createSignal(
+    localStorage.getItem("comfyEndpoint") || "http://127.0.0.1:8188",
+  );
+  function setComfyEndpoint(url: string) {
+    setComfyEndpointRaw(url);
+    localStorage.setItem("comfyEndpoint", url);
+  }
+
+  const localBackend = new LocalBackend(comfyEndpoint());
   const cloudBackend = new CloudBackend();
   const backendFor = (): GenerationBackend =>
     backendMode() === "cloud" ? cloudBackend : localBackend;
+
+  // Keep the local backend pointed at the configured endpoint.
+  createEffect(() => localBackend.setEndpoint(comfyEndpoint()));
+
+  // First-run / on-change connection check (Local only): a non-blocking banner
+  // when ComfyUI is unreachable.
+  const [connOk, setConnOk] = createSignal<boolean | null>(null);
+  const [bannerDismissed, setBannerDismissed] = createSignal(false);
+  createEffect(() => {
+    const endpoint = comfyEndpoint();
+    if (backendMode() !== "local") {
+      setConnOk(null);
+      return;
+    }
+    setBannerDismissed(false);
+    void checkComfy(endpoint).then((s) => setConnOk(s.ok));
+  });
 
   const activeCharacters = createMemo(() =>
     characters().filter((c) => enabledIds().has(c.id)),
@@ -166,6 +194,22 @@ function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <main class="workspace">
+        <Show when={backendMode() === "local" && connOk() === false && !bannerDismissed()}>
+          <div class="conn-banner">
+            <span>
+              ComfyUI isn't reachable at {comfyEndpoint()}. Generation won't work until it's running
+              — see the README "Setting up the generation engine" section.
+            </span>
+            <span class="conn-banner__actions">
+              <button type="button" onClick={() => setSettingsOpen(true)}>
+                Open Settings
+              </button>
+              <button type="button" title="Dismiss" onClick={() => setBannerDismissed(true)}>
+                ✕
+              </button>
+            </span>
+          </div>
+        </Show>
         <PromptPanel
           activeCharacters={activeCharacters()}
           backendMode={backendMode()}
@@ -189,6 +233,8 @@ function App() {
         <SettingsModal
           mode={backendMode()}
           onModeChange={setBackendMode}
+          endpoint={comfyEndpoint()}
+          onEndpointChange={setComfyEndpoint}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>

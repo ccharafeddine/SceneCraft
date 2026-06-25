@@ -12,3 +12,39 @@
   flex-direction: column;
   background: var(--bg);
 }
+
+.conn-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 0.83rem;
+  color: #8a2e1f;
+  background: rgba(192, 57, 43, 0.1);
+  border-bottom: 1px solid rgba(192, 57, 43, 0.3);
+}
+
+.conn-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.conn-banner__actions button {
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid rgba(192, 57, 43, 0.4);
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .conn-banner {
+    color: #f0a090;
+  }
+}

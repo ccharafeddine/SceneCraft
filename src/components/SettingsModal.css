@@ -46,3 +46,17 @@
 .settings__remove {
   align-self: flex-start;
 }
+
+.settings__conn {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.settings__conn--ok {
+  color: #1e8e4e;
+}
+
+.settings__conn--bad {
+  color: #c0392b;
+}
