@@ -1,6 +1,10 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onMount, Show } from "solid-js";
 import { CastPanel } from "./components/CastPanel";
 import { CharacterEditor } from "./components/CharacterEditor";
+import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
+import { OutputGallery, type JobView } from "./components/OutputGallery";
+import { LocalBackend } from "./backends/local";
+import type { ImageRequest, JobHandle, VideoRequest } from "./backends/types";
 import {
   createCharacter,
   listCharacters,
@@ -17,6 +21,14 @@ function App() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [editingId, setEditingId] = createSignal<string | null>(null);
+  const [jobs, setJobs] = createSignal<JobView[]>([]);
+
+  // Default backend is the Local stub. The Local | Cloud toggle lands in Step 13.
+  const backend = new LocalBackend();
+
+  const activeCharacters = createMemo(() =>
+    characters().filter((c) => enabledIds().has(c.id)),
+  );
 
   async function refresh() {
     try {
@@ -52,6 +64,72 @@ function App() {
     void refresh();
   }
 
+  // --- generation ---
+  // Conditioning is hardcoded to "none" until routing lands in Step 7; the
+  // active cast is shown in the prompt panel but not yet injected.
+  function buildImageRequest(input: GenerateInput): ImageRequest {
+    return {
+      prompt: input.prompt,
+      conditioning: { kind: "none" },
+      baseModel: "flux2-dev",
+      width: input.width,
+      height: input.height,
+      steps: input.steps,
+    };
+  }
+
+  function buildVideoRequest(input: GenerateInput): VideoRequest {
+    return {
+      prompt: input.prompt,
+      conditioning: { kind: "none" },
+      baseModel: "flux2-dev",
+      width: input.width,
+      height: input.height,
+      steps: input.steps,
+      videoModel: input.videoModel,
+      frames: input.frames,
+      fps: input.fps,
+    };
+  }
+
+  function poll(id: string) {
+    const tick = async () => {
+      let next;
+      try {
+        next = await backend.pollJob(id);
+      } catch (e) {
+        next = { id, state: "error" as const, progress: 0, error: String(e) };
+      }
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: next } : j)));
+      if (next.state !== "done" && next.state !== "error") {
+        setTimeout(tick, 250);
+      }
+    };
+    void tick();
+  }
+
+  async function handleGenerate(input: GenerateInput) {
+    let handle: JobHandle;
+    try {
+      handle =
+        input.mode === "image"
+          ? await backend.generateImage(buildImageRequest(input))
+          : await backend.generateVideo(buildVideoRequest(input));
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    const view: JobView = {
+      id: handle.id,
+      kind: handle.kind,
+      prompt: input.prompt || "(no prompt)",
+      status: { id: handle.id, state: "queued", progress: 0 },
+      createdAt: Date.now(),
+    };
+    setJobs((prev) => [view, ...prev]);
+    poll(handle.id);
+  }
+
   return (
     <div class="layout">
       <CastPanel
@@ -64,9 +142,8 @@ function App() {
         onOpenEditor={setEditingId}
       />
       <main class="workspace">
-        <div class="workspace__placeholder">
-          <p>Prompt &amp; output arrive in Step 6.</p>
-        </div>
+        <PromptPanel activeCharacters={activeCharacters()} onGenerate={handleGenerate} />
+        <OutputGallery jobs={jobs()} />
       </main>
 
       <Show when={editingId()}>
