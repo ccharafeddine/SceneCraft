@@ -11,7 +11,7 @@ This is a Smith-family tool: single purpose, clean, native. It does character-co
 - **Shell:** Tauri 2.x (Rust + system webview, ~10MB binary)
 - **Frontend:** SolidJS + TypeScript + Vite, plain CSS with custom properties for light/dark theming via `prefers-color-scheme`
 - **Generation engine:** ComfyUI running at a local endpoint (offline) OR a cloud API (BYOK). The app does NOT install, manage, or launch ComfyUI; it expects an endpoint to exist and talks to it. Engine setup lives in the README as steps Claude Code executes per machine. The app never reimplements diffusion; it sends graphs and reads results.
-- **Image model:** FLUX.2 Dev (open weights, local) or FLUX.2 via cloud. Supports LoRA and multi-reference.
+- **Image model:** Local on 8GB (RTX 3070): **FLUX.1 dev GGUF Q4_K_S** (~6.8GB) + quantized T5 encoder + FLUX.1 VAE, loaded via the city96 ComfyUI-GGUF node, launched `--lowvram`. **FLUX.2** (Dev/Klein) is the 16GB+ local and cloud option. FLUX.1 supports LoRA but has **no native multi-reference**; FLUX.2 adds it. (FLUX.2 Dev needs ~18-24GB even quantized, so it does not run on 8GB.) See the routing note below for what this means for group scenes.
 - **Video model (stylized):** LTX-Video, image-to-video. Runs on 8GB+.
 - **Video model (photoreal):** Wan 2.2 image-to-video. 14B wants 16GB+; 1.3B fits 8GB at lower quality.
 - **LoRA training:** swappable backend, local (ai-toolkit) or cloud (fal.ai). Separate from generation.
@@ -23,7 +23,7 @@ Rationale for matching GifSmith's stack: same toolchain, smallest binary, native
 
 ## Core design principle: solve identity at the image stage, never the video stage
 
-Do not ask a video model to know a face. The pipeline always generates a still with identity already locked (FLUX.2 + the character's LoRA, or multi-reference), then feeds that finished frame into image-to-video. The video model only adds motion to a frame that is already correct.
+Do not ask a video model to know a face. The pipeline always generates a still with identity already locked (FLUX + the character's LoRA, or multi-reference), then feeds that finished frame into image-to-video. The video model only adds motion to a frame that is already correct.
 
 Consequences:
 - Video backend (LTX, Wan) is interchangeable and never touches the identity problem.
@@ -56,7 +56,7 @@ characters/
   "trigger": "j03_token",         // injected into prompts when LoRA active
   "lora_path": "lora/joe.safetensors",  // null until trained
   "lora_strength": 0.9,
-  "base_model": "flux2-dev",
+  "base_model": "flux1-dev",      // local 8GB default; "flux2-dev" on 16GB+/cloud
   "ref_images": ["refs/01.jpg", "..."],
   "created_at": "..."
 }
@@ -105,14 +105,16 @@ else:  # 2+ characters in one frame
 
 Two-plus characters always routes to multi-reference. Stacking multiple LoRAs causes identity bleed (one face leaks onto another); multi-reference is the correct tool for group scenes.
 
+**Note on FLUX.1 and multi-reference (8GB tier).** FLUX.1 dev (the local 8GB base) has **no native multi-reference**. Any multi-reference path — a single character *without* a trained LoRA, or 2+ characters together — therefore needs **FLUX.2**, via the cloud backend or a 16GB+ local card. The fully-local 8GB happy path is a single character *with* a trained LoRA (FLUX.1 + LoRA + trigger). The dual-backend toggle already covers this: flip to cloud for group/multi-reference scenes. It is not a redesign, just a tier-aware routing reality. Also: local LoRA training is impractical on 8GB VRAM / 16GB RAM, so training defaults to the cloud (fal) path while generation runs locally (see Gotchas).
+
 ---
 
 ## Generation contracts
 
 The app ships a set of ComfyUI workflow graph templates (JSON) with placeholder nodes the backend fills at runtime:
 
-1. **txt2img_flux_lora.json** — FLUX.2 + LoRA loader + trigger token. Single photoreal/stylized character, max fidelity.
-2. **txt2img_flux_multiref.json** — FLUX.2 + multi-reference image inputs. Solo without LoRA, or group scenes.
+1. **txt2img_flux_lora.json** — FLUX + LoRA loader + trigger token (FLUX.1 dev on 8GB local; FLUX.2 on 16GB+/cloud). Single photoreal/stylized character, max fidelity. This is the fully-local 8GB happy path.
+2. **txt2img_flux_multiref.json** — FLUX.2 + multi-reference image inputs. Solo without LoRA, or group scenes. Requires FLUX.2 (cloud or 16GB+ local); FLUX.1 has no native multi-reference, so on 8GB this path routes to the cloud backend.
 3. **img2vid_ltx.json** — LTX-Video image-to-video. Stylized.
 4. **img2vid_wan.json** — Wan 2.2 image-to-video. Photoreal.
 
@@ -185,9 +187,9 @@ scenecraft/
 5. Define backend interfaces (`backends/types.ts`). Stub both implementations returning fake jobs.
 6. Prompt panel + output gallery wired to the stubbed backend. Image/Video toggle, async job UI with progress bars.
 7. Routing logic (`lib/routing.ts`) with unit tests for the 0 / 1-LoRA / 1-multiref / 2+ cases.
-8. Stand up ComfyUI manually (follow README) and get one FLUX.2 image out of it by hand. Confirm the `/prompt`, `/history`, `/view`, WebSocket contract before automating anything.
+8. **Stand up ComfyUI for the 8GB / FLUX.1 path (manual, no client automation yet).** Close background GPU apps first (browsers/Discord/overlays can hold ~2.5GB of the 8GB). Then: install ComfyUI; install the city96 **ComfyUI-GGUF** custom node; download **FLUX.1 dev Q4_K_S** (~6.8GB) + a quantized **T5** encoder + the **FLUX.1 VAE** into the correct ComfyUI model folders (`models/unet`, `models/text_encoders`, `models/vae`); launch with `--lowvram`; and generate one image by hand in the browser UI at **768×768** (CFG 1.0, empty negative prompt, euler/simple, 20-30 steps). Confirm the `/prompt`, `/history`, `/view`, and WebSocket contract before automating anything. Exact filenames/links come from the current city96 model card, not this doc.
 9. ComfyUI client (`backends/local.ts` + `comfy.rs`): POST graph, WebSocket progress, history + view fetch, `/system_stats` health check. Test against the manually-running ComfyUI from step 8.
-10. Graph templates: txt2img_flux_lora and txt2img_flux_multiref. Fill placeholders from request. Real local image generation works end to end.
+10. Graph templates: txt2img_flux_lora (FLUX.1 dev on 8GB local, the happy path) and txt2img_flux_multiref (FLUX.2, cloud/16GB+ — FLUX.1 has no multi-reference). Fill placeholders from request. Real local image generation (the LoRA path) works end to end.
 11. Video graphs: img2vid_ltx and img2vid_wan. Implement the two-stage still-then-animate flow behind one button.
 12. CloudBackend: BYOK image + video clients. Keychain storage (`keychain.rs`). Backend toggle in settings.
 13. Connection check + settings: editable ComfyUI endpoint, health ping, tier readout, clear error pointing at the README when unreachable.
@@ -201,7 +203,8 @@ scenecraft/
 ## Gotchas
 
 - **Mac vs Windows GPU split.** Local video generation is a CUDA/NVIDIA world. The 3070 (Windows) is the realistic local video machine; the Mac handles local image generation (FLUX via Q4/MLX, slow) but is not a viable local video box in 2026. The backend toggle is what makes this a non-issue: Mac users flip to cloud for video.
-- **8GB training is slow.** FLUX LoRA at Q4 on the 3070 runs multi-hour. Default the training backend recommendation to cloud (fal) for 8GB tiers; keep local available with a clear time warning.
+- **8GB training is impractical, not just slow.** Local FLUX LoRA training does not fit comfortably in 8GB VRAM + 16GB system RAM; treat local training as not viable on this tier. Training therefore **defaults to the cloud (fal) path**, while generation runs locally. The cloud trainer must target the same base you generate on (FLUX.1 dev for 8GB local) so the resulting `.safetensors` loads in local FLUX.1 generation. Keep the local trainer available for 16GB+ cards with a clear time warning.
+- **Background GPU apps eat the 8GB budget.** Browsers, Discord, and game/streaming overlays can hold ~2.5GB of VRAM. Close them before local generation on 8GB; that headroom is often the difference between fitting and an out-of-memory error. The app should surface OOM/VRAM guidance from ComfyUI when it happens.
 - **Multi-LoRA bleed.** Never stack two character LoRAs in one graph. Route 2+ characters to multi-reference.
 - **Trigger tokens.** Inject the LoRA trigger automatically; never make the user type it. Keep prompts plain English.
 - **App does not own ComfyUI.** The app never starts, stops, or installs ComfyUI. It assumes an endpoint exists (see README). If the ping fails, show the README pointer, never try to fix the environment from inside the app.

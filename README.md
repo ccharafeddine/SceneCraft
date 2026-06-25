@@ -39,18 +39,18 @@ The core design rule: **identity is solved at the image stage, never the video s
 ```
 Album (20-30+ images)  --train once-->  character LoRA (.safetensors)
                                               |
-Prompt + active characters  --->  FLUX.2 + LoRA  --->  identity-locked still
+Prompt + active characters  --->  FLUX + LoRA  --->  identity-locked still
                                                               |
                                               --->  Wan / LTX image-to-video  --->  video
 ```
 
 ## Hardware tiers
 
-Local generation is an NVIDIA/CUDA world. Apple Silicon runs local **image** generation (slowly, via MPS); local **video** generation is not viable on Mac in 2026 (flip to cloud for video on a Mac). All VRAM figures verified against ComfyUI's FLUX.2 and video docs as of mid-2026; check the linked repos for current numbers.
+Local generation is an NVIDIA/CUDA world. Apple Silicon runs local **image** generation (slowly, via MPS); local **video** generation is not viable on Mac in 2026 (flip to cloud for video on a Mac). The 8GB tier runs **FLUX.1 dev (Q4 GGUF)**; **FLUX.2 needs 16GB+ or cloud** (it does not fit 8GB even quantized). All VRAM figures verified against ComfyUI's FLUX.1/FLUX.2 and video docs as of mid-2026; check the linked repos for current numbers.
 
 | GPU VRAM | Image | Video | LoRA training | Notes |
 |---|---|---|---|---|
-| 8GB (e.g. RTX 3070) | FLUX.2 Dev Q4 GGUF (`--lowvram`), or FLUX.2 Klein 4B | LTX-Video (stylized), Wan 1.3B (low-res photoreal) | Possible at Q4, 3-4 hours per character; offload to cloud recommended | Pizza-Ninja path is great; photoreal video is the weak spot |
+| 8GB (e.g. RTX 3070) | FLUX.1 dev GGUF Q4_K_S (~6.8GB, `--lowvram`) | LTX-Video (stylized), Wan 1.3B (low-res photoreal) | Impractical locally (8GB VRAM / 16GB RAM); use cloud (fal) | FLUX.2 + multi-reference (2+ chars) need cloud or 16GB+ |
 | 12-16GB | FLUX.2 Dev FP8 | Wan 14B (12GB with patience, 16GB comfortable), LTX | Local viable | Solid all-rounder |
 | 24GB+ | FLUX.2 Dev FP8/full | Wan 14B, HunyuanVideo | Local fast | Full quality |
 | Apple Silicon (M-series) | FLUX via MPS, slow | Not viable locally | Slow/nascent | Use cloud for video |
@@ -147,9 +147,39 @@ git clone https://github.com/Comfy-Org/ComfyUI-Manager.git
 
 Restart ComfyUI. The Manager button appears in the UI and is the easiest way to install everything below.
 
-### 3. Download the image model (FLUX.2 Dev)
+### 3. Download the image model
 
-FLUX.2 needs **three** files, and they go in three different folders. FLUX.2 uses a Mistral text encoder (not the old T5/CLIP) and a FLUX.2-specific VAE. ComfyUI repackages them in the `Comfy-Org/flux2-dev` Hugging Face repo, already in the layout ComfyUI expects.
+Pick the path for your card. **On 8GB (RTX 3070), use FLUX.1 dev (GGUF Q4_K_S).** FLUX.2 Dev needs ~18-24GB even quantized and will **not** run on 8GB; it is the 16GB+/cloud option.
+
+#### 8GB (RTX 3070): FLUX.1 dev, GGUF Q4_K_S
+
+FLUX.1 uses a T5 text encoder and the FLUX.1 VAE. On 8GB you load a quantized GGUF build via city96's loader node.
+
+1. Install the GGUF custom node from `ComfyUI/custom_nodes/`:
+   ```bash
+   git clone https://github.com/city96/ComfyUI-GGUF.git
+   pip install -r ComfyUI-GGUF/requirements.txt
+   ```
+2. Download three files into three folders:
+   ```
+   ComfyUI/models/
+     unet/            flux1-dev-Q4_K_S.gguf        # ~6.8GB diffusion model (GGUF)
+     text_encoders/   <quantized T5 xxl>           # GGUF or FP8 T5 encoder (older ComfyUI: clip/)
+     vae/             ae.safetensors               # FLUX.1 VAE
+   ```
+   Use **Unet Loader (GGUF)** for the diffusion model and the GGUF/quantized **CLIP/T5 loader** for the encoder.
+
+> Exact filenames and download links change. Pull the current files from the [city96/FLUX.1-dev-gguf model card](https://huggingface.co/city96/FLUX.1-dev-gguf) (and a quantized T5 encoder card) at build time rather than hardcoding them here.
+
+**Operational notes for 8GB (important):**
+- Launch ComfyUI with `--lowvram` (see step 5).
+- Start at **768×768**; only go larger once that works.
+- **Close background GPU apps first.** Browsers, Discord, and overlays can hold ~2.5GB of your 8GB — the difference between fitting and an out-of-memory error.
+- FLUX sampling: **CFG/guidance 1.0**, **empty negative prompt**, sampler **euler** + scheduler **simple**, **20-30 steps**.
+
+#### 16GB+ / 24GB (and cloud): FLUX.2 Dev
+
+FLUX.2 needs **three** files in three folders. It uses a Mistral text encoder (not the old T5/CLIP) and a FLUX.2-specific VAE, repackaged in the `Comfy-Org/flux2-dev` Hugging Face repo in the layout ComfyUI expects.
 
 ```
 ComfyUI/models/
@@ -158,15 +188,10 @@ ComfyUI/models/
   vae/                flux2-vae.safetensors
 ```
 
-Pick the variant for your card:
-
 - **24GB+:** FP8 mixed (`flux2_dev_fp8mixed.safetensors`).
-- **8GB (RTX 3070):** use a **GGUF Q4** build instead. Install the GGUF node from `custom_nodes/`:
-  ```bash
-  git clone https://github.com/city96/ComfyUI-GGUF.git
-  pip install -r ComfyUI-GGUF/requirements.txt
-  ```
-  Download `flux2-dev-Q4_K_M.gguf` (diffusion model) and a quantized Mistral encoder, plus `flux2-vae.safetensors`. Use the GGUF loader nodes in the workflow. Alternatively, **FLUX.2 Klein 4B** is purpose-built for 8GB and runs natively, but it is distilled (slightly lower fidelity ceiling than Dev). For max identity fidelity, prefer Dev Q4 and accept slower generation.
+- **12-16GB:** FLUX.2 Dev FP8, or **FLUX.2 Klein 4B** (purpose-built for smaller cards; distilled, slightly lower fidelity ceiling).
+
+FLUX.2 is also what the **cloud backend** uses, and it is the only path with native **multi-reference** (needed for the 2+ character routing case and for a single character without a trained LoRA). On 8GB local, those paths route to cloud.
 
 > Download links and exact filenames change as Black Forest Labs and ComfyUI ship updates. Get current files from the [ComfyUI FLUX.2 Dev tutorial](https://docs.comfy.org/tutorials/flux/flux-2-dev) rather than hardcoding URLs.
 
@@ -187,7 +212,7 @@ python main.py --listen 127.0.0.1 --port 8188
 
 The API is now at `http://127.0.0.1:8188`. Confirm a manual generation works in the browser UI before pointing Scenecraft at it.
 
-**FLUX-specific settings that trip people up:** CFG/guidance = 1.0 (FLUX uses embedded guidance; high CFG oversaturates), no negative prompt (FLUX ignores it), sampler `euler` + scheduler `simple` as the baseline.
+**FLUX-specific settings that trip people up:** CFG/guidance = 1.0 (FLUX uses embedded guidance; high CFG oversaturates), no negative prompt (FLUX ignores it), sampler `euler` + scheduler `simple`, 20-30 steps as the baseline. On 8GB, start at 768×768 and close background GPU apps first (see step 3).
 
 ### 6. Set up LoRA training (one-time per character)
 
@@ -197,15 +222,15 @@ The API is now at `http://127.0.0.1:8188`. Confirm a manual generation works in 
 git clone https://github.com/ostris/ai-toolkit.git
 cd ai-toolkit
 pip install -r requirements.txt
-# Configure a FLUX.2 character LoRA training run (see ai-toolkit's FLUX config examples),
+# Configure a FLUX.1 character LoRA training run (see ai-toolkit's FLUX config examples),
 # point it at characters/<id>/refs/, output the .safetensors to characters/<id>/lora/
 ```
 
-On an 8GB card expect multi-hour runs at Q4. This is a one-time cost per character.
+Local LoRA training is **impractical on 8GB VRAM + 16GB system RAM** — treat this local path as for 16GB+ cards. On 8GB, use the cloud (fal) trainer below; generation still runs locally.
 
-**Cloud (fal.ai), recommended for 8GB:** use the [fal FLUX.2 trainer](https://fal.ai/models/flux-2-trainer/text-to-image) with your API key, then download the resulting `.safetensors` into the character's `lora/` folder. Scenecraft generates locally afterward; only the one-time training touched the cloud.
+**Cloud (fal.ai), the default for 8GB:** use fal's **FLUX.1 dev LoRA trainer** with your API key, then download the resulting `.safetensors` into the character's `lora/` folder. Match the trainer's base to what you generate on: for 8GB local generation that is **FLUX.1 dev**, so train a FLUX.1 LoRA (a FLUX.2 LoRA will not load on local FLUX.1). Pick the current trainer slug from [fal's model list](https://fal.ai/models) at build time. Scenecraft generates locally afterward; only the one-time training touched the cloud. (If you generate on FLUX.2 via the cloud backend, train a FLUX.2 LoRA instead.)
 
-> NSFW note: the local FLUX.2 Dev weights have no inference-time API filter and nothing is logged or transmitted, but the base Dev model ships trained on filtered data and is not built for explicit content. Community fine-tunes/LoRAs change that and load like any other LoRA. See [acceptable use](#consent-and-acceptable-use) for the hard limits that apply regardless of where you run.
+> NSFW note: the local FLUX.1 dev weights have no inference-time API filter and nothing is logged or transmitted, but the base Dev model ships trained on filtered data and is not built for explicit content. Community fine-tunes/LoRAs change that and load like any other LoRA. See [acceptable use](#consent-and-acceptable-use) for the hard limits that apply regardless of where you run.
 
 ---
 
@@ -241,8 +266,8 @@ You are building this app from this repo. Workflow:
 
 1. Read [`CLAUDE.md`](./CLAUDE.md) fully. It is the source of truth for architecture, data model, backend interfaces, routing logic, and the ordered 17-step build plan.
 2. Build **one numbered step at a time.** Steps 1-7 produce a working UI against stubbed backends. Do not touch ComfyUI until step 8.
-3. At step 8, follow [Setting up the generation engine](#setting-up-the-generation-engine-comfyui) on this machine: detect OS and GPU/VRAM, install ComfyUI, pick the model variant for the detected tier, get one manual FLUX.2 image out before automating the client.
-4. The fast-moving specifics (FLUX.2 node names, exact model filenames, current video node packs) should be pulled fresh from the linked ComfyUI docs at build time, not assumed from this README.
+3. At step 8, follow [Setting up the generation engine](#setting-up-the-generation-engine-comfyui) on this machine: detect OS and GPU/VRAM, install ComfyUI, pick the model variant for the detected tier, get one manual image out before automating the client (FLUX.1 dev on 8GB; FLUX.2 on 16GB+).
+4. The fast-moving specifics (FLUX.1/FLUX.2 node names, exact model filenames, current video node packs) should be pulled fresh from the linked ComfyUI/city96 docs at build time, not assumed from this README.
 5. Keep the app's responsibility narrow: it talks to a ComfyUI endpoint and cloud APIs. It does not install or manage ComfyUI.
 6. Honor the stack and conventions in `CLAUDE.md` (SolidJS prop access without destructuring, keys in the keychain, no telemetry).
 
