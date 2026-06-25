@@ -1,11 +1,17 @@
 // LocalBackend: talks to a ComfyUI endpoint set in settings (default
 // 127.0.0.1:8188).
 //
-// Images are real (Step 9): the graph is built from the proven FLUX.1 template
-// + registry, the HTTP round-trip (POST /prompt -> poll /history -> GET /view)
-// runs in Rust (`comfy_generate_image`) to dodge webview CORS, and live step
-// progress arrives over a WebSocket opened here. Video stays on the simulator
-// until a later step. LoRA / multi-reference conditioning is not wired yet.
+// Images and video are both real and local now:
+//   - image: build the FLUX graph from the proven template + registry.
+//   - video: build the two-stage still-then-animate graph (FLUX still -> LTX
+//     img2vid in one prompt). One "Generate video" button; two stages under
+//     the hood. The video model only adds motion — identity is solved at the
+//     still, so the same routing/conditioning applies (multiref still blocked).
+//
+// Both paths POST a complete graph to the Rust `comfy_generate_image` command
+// (POST /prompt -> poll /history -> GET /view), which returns whatever the
+// graph produced — a PNG for image, an animated WEBP for video — as a data URL.
+// Live step progress arrives over a WebSocket opened here.
 import { invoke } from "@tauri-apps/api/core";
 import type {
   GenerationBackend,
@@ -14,8 +20,7 @@ import type {
   JobStatus,
   VideoRequest,
 } from "./types";
-import { buildImageGraph, LocalUnsupportedError } from "./graph";
-import { SimulatedJobs } from "./stub";
+import { buildImageGraph, buildVideoGraph, LocalUnsupportedError } from "./graph";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8188";
 
@@ -25,15 +30,18 @@ interface ComfyImageResult {
 }
 
 let counter = 0;
-function nextId(): string {
+function nextId(prefix: string): string {
   counter += 1;
-  return `img-${Date.now().toString(36)}-${counter}`;
+  return `${prefix}-${Date.now().toString(36)}-${counter}`;
+}
+
+function messageFor(err: unknown): string {
+  return err instanceof LocalUnsupportedError ? err.message : String(err);
 }
 
 export class LocalBackend implements GenerationBackend {
   readonly name = "local";
   private endpoint: string;
-  private video = new SimulatedJobs("Local video (stub)");
   private jobs = new Map<string, JobStatus>();
   private sockets = new Map<string, WebSocket>();
 
@@ -42,27 +50,36 @@ export class LocalBackend implements GenerationBackend {
   }
 
   async generateImage(req: ImageRequest): Promise<JobHandle> {
-    const id = nextId();
-
-    // Build the graph from the cast conditioning. If the cast needs a path
-    // FLUX.1 local can't run (multi-reference), fail with a clear, actionable
-    // message instead of silently generating an image without the character.
-    let graph;
+    const id = nextId("img");
     try {
-      graph = buildImageGraph(req);
+      this.submit(id, buildImageGraph(req), "image");
     } catch (err) {
-      const message = err instanceof LocalUnsupportedError ? err.message : String(err);
-      this.jobs.set(id, { id, state: "error", progress: 0, error: message });
-      return { id, kind: "image" };
+      this.jobs.set(id, { id, state: "error", progress: 0, error: messageFor(err) });
     }
+    return { id, kind: "image" };
+  }
 
+  async generateVideo(req: VideoRequest): Promise<JobHandle> {
+    const id = nextId("vid");
+    try {
+      this.submit(id, buildVideoGraph(req), "video");
+    } catch (err) {
+      this.jobs.set(id, { id, state: "error", progress: 0, error: messageFor(err) });
+    }
+    return { id, kind: "video" };
+  }
+
+  async pollJob(id: string): Promise<JobStatus> {
+    return this.jobs.get(id) ?? { id, state: "error", progress: 0, error: `unknown job '${id}'` };
+  }
+
+  /** Submit a complete graph: open progress WS, fire the Rust round-trip, and
+   *  resolve the job to the returned image/clip (or an error). */
+  private submit(id: string, graph: unknown, outputType: "image" | "video") {
     const clientId = crypto.randomUUID();
     this.jobs.set(id, { id, state: "queued", progress: 0, message: "Submitting" });
     this.openProgressSocket(id, clientId);
 
-    // Fire the (blocking) Rust round-trip; resolve/reject updates job state.
-    // Not awaited here so the call returns a handle immediately, matching the
-    // poll-based interface the UI already drives.
     invoke<ComfyImageResult>("comfy_generate_image", {
       endpoint: this.endpoint,
       graph,
@@ -74,24 +91,13 @@ export class LocalBackend implements GenerationBackend {
           state: "done",
           progress: 1,
           message: "Done",
-          outputs: [{ type: "image", url: res.data_url }],
+          outputs: [{ type: outputType, url: res.data_url }],
         });
       })
       .catch((err) => {
         this.jobs.set(id, { id, state: "error", progress: 0, error: String(err) });
       })
       .finally(() => this.closeSocket(id));
-
-    return { id, kind: "image" };
-  }
-
-  async generateVideo(req: VideoRequest): Promise<JobHandle> {
-    // Video still uses the simulator; the real i2v flow lands in a later step.
-    return this.video.enqueueVideo(req);
-  }
-
-  async pollJob(id: string): Promise<JobStatus> {
-    return this.jobs.get(id) ?? this.video.poll(id);
   }
 
   /** Best-effort live progress: ComfyUI routes a job's messages to the WS that
@@ -128,7 +134,7 @@ export class LocalBackend implements GenerationBackend {
         /* progress is best-effort */
       };
     } catch {
-      /* progress is best-effort; the invoke still returns the final image */
+      /* progress is best-effort; the invoke still returns the final result */
     }
   }
 

@@ -60,17 +60,17 @@
     },
     {
       "id": "ltx-video",
-      "name": "LTX-Video (image-to-video, stylized)",
+      "name": "LTX-Video 2B distilled (image-to-video)",
       "type": "video",
       "backends": ["local"],
-      "quant": null,
+      "quant": "fp8-distilled",
       "minVramGb": 8,
-      "source": { "repo": "Lightricks/LTX-Video", "filename": null },
+      "source": { "repo": "Lightricks/LTX-Video", "filename": "ltxv-2b-0.9.8-distilled-fp8.safetensors" },
       "targetFolder": "models/checkpoints",
       "graphTemplates": ["img2vid_ltx"],
-      "sizeGb": null,
-      "verified": false,
-      "notes": "Stylized i2v, runs on 8GB. Confirm exact filename + node pack at Step 11."
+      "sizeGb": 4.16,
+      "verified": true,
+      "notes": "Local 8GB image-to-video. Native ComfyUI LTXV nodes (no custom node). Checkpoint bundles the VAE; reuses the FLUX T5 GGUF via CLIPLoader type ltxv. Verified end-to-end in Step 11 (still->animate, 512x320, 49 frames, ~24s)."
     },
     {
       "id": "wan-2.2-1.3b",

@@ -13,25 +13,32 @@ export interface JobView {
 
 function OutputView(props: { output: JobOutput }) {
   const o = () => props.output;
+  const url = () => o().url;
+  // LTX returns an animated WEBP (data:image/webp) — it plays in an <img>.
+  // Real video containers (mp4/webm) use <video>. The stub video has no url.
+  const isVideoFile = () =>
+    url().startsWith("data:video/") || /\.(mp4|webm)(\?|$)/i.test(url());
   return (
-    <Show
-      when={o().type === "video"}
-      fallback={<img class="job__media-img" src={o().url} alt="" />}
-    >
+    <>
       <Show
-        when={o().url}
+        when={url()}
         fallback={
-          <div class="job__video-stub">
-            <Show when={o().poster}>
-              <img class="job__media-img" src={o().poster!} alt="" />
-            </Show>
-            <span class="job__badge">video</span>
-          </div>
+          <Show when={o().poster}>
+            <img class="job__media-img" src={o().poster!} alt="" />
+          </Show>
         }
       >
-        <video class="job__media-img" src={o().url} controls />
+        <Show
+          when={isVideoFile()}
+          fallback={<img class="job__media-img" src={url()} alt="" />}
+        >
+          <video class="job__media-img" src={url()} controls loop muted playsinline />
+        </Show>
       </Show>
-    </Show>
+      <Show when={o().type === "video"}>
+        <span class="job__badge">clip</span>
+      </Show>
+    </>
   );
 }
 

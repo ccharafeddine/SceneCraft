@@ -10,8 +10,9 @@
 //
 // Model filenames come from the registry (models.json), never hardcoded.
 import graphTemplate from "../../graphs/txt2img_flux.json";
+import ltxTemplate from "../../graphs/img2vid_ltx.json";
 import { defaultLocalImageModel, modelById, MODELS } from "../lib/models";
-import type { Conditioning, ImageRequest } from "./types";
+import type { Conditioning, ImageRequest, VideoRequest } from "./types";
 
 export interface GraphNode {
   class_type: string;
@@ -127,4 +128,94 @@ function injectLora(graph: Graph, cond: Extract<Conditioning, { kind: "lora" }>,
     const userText = String(graph[posId].inputs.text ?? "");
     graph[posId].inputs.text = [cond.trigger, userText].filter(Boolean).join(", ");
   }
+}
+
+// --- video (image-to-video) ---
+
+/** Round to a multiple of 32 (LTX requires it), clamped to an 8GB-safe range. */
+function round32(n: number, min = 256, max = 512): number {
+  const clamped = Math.min(max, Math.max(min, n));
+  return Math.max(min, Math.round(clamped / 32) * 32);
+}
+
+/** LTX frame count must be (n*8 + 1). Clamp to an 8GB-safe length. */
+function ltxLength(frames: number): number {
+  const n = Math.round((Math.min(97, Math.max(9, frames)) - 1) / 8);
+  return n * 8 + 1;
+}
+
+/**
+ * Two stages in one ComfyUI prompt: generate the identity-locked still (the
+ * exact FLUX image graph, conditioning and all), then feed its decoded frame
+ * straight into LTX img2vid. The models load sequentially, so 8GB never has to
+ * hold both. The video model only adds motion — identity is solved at the
+ * still. Reuses buildImageGraph, so character video inherits the same honest
+ * routing: 0 chars -> plain still, trained LoRA -> lora still, multiref ->
+ * throws (blocked). Verified end-to-end in Step 11.
+ */
+export function buildVideoGraph(req: VideoRequest): Graph {
+  if (req.videoModel !== "ltx") {
+    // Wan (and any photoreal large model) is 16GB+/cloud, not local 8GB.
+    throw new LocalUnsupportedError(
+      "Local video is LTX-Video only. Wan (photoreal) needs a 16GB+ card or the " +
+        "Cloud backend. Switch the video model to LTX for local generation.",
+    );
+  }
+
+  // Stage 1: the still (throws LocalUnsupportedError for multiref, same as image).
+  const still = buildImageGraph({
+    prompt: req.prompt,
+    conditioning: req.conditioning,
+    baseModel: req.baseModel,
+    width: req.width,
+    height: req.height,
+    steps: req.steps,
+    seed: req.seed,
+  });
+  // Drop the still's SaveImage so the only image output is the animated clip.
+  const saveId = findNodeId(still, "SaveImage");
+  if (saveId) delete still[saveId];
+  const stillImageNode = findNodeId(still, "VAEDecode");
+
+  // Stage 2: LTX, sourced from the registry, fed the still's decoded frame.
+  const ltx = structuredClone(ltxTemplate) as unknown as Graph;
+  const ltxModel = modelById("ltx-video");
+  const t5 = MODELS.find(
+    (m) => m.type === "encoder" && m.id.startsWith("t5") && m.backends.includes("local"),
+  );
+  for (const node of Object.values(ltx)) {
+    switch (node.class_type) {
+      case "CheckpointLoaderSimple":
+        node.inputs.ckpt_name = basename(ltxModel?.source.filename);
+        break;
+      case "CLIPLoaderGGUF":
+        node.inputs.clip_name = basename(t5?.source.filename);
+        break;
+      case "LTXVImgToVideo":
+        node.inputs.image = [stillImageNode, 0];
+        node.inputs.width = round32(req.width);
+        node.inputs.height = round32(req.height);
+        node.inputs.length = ltxLength(req.frames);
+        break;
+      case "LTXVConditioning":
+        node.inputs.frame_rate = req.fps;
+        break;
+      case "SamplerCustom":
+        node.inputs.noise_seed = req.seed ?? Math.floor(Math.random() * 1_000_000_000_000);
+        break;
+      case "SaveAnimatedWEBP":
+        node.inputs.fps = req.fps;
+        break;
+    }
+  }
+  // LTX motion prompt = the user's scene prompt (the still already locked
+  // identity). The positive node is the CLIPTextEncode feeding LTXVImgToVideo.
+  const i2v = Object.values(ltx).find((n) => n.class_type === "LTXVImgToVideo");
+  const ltxPosRef = i2v?.inputs.positive as [string, number] | undefined;
+  const ltxPosId = ltxPosRef?.[0];
+  if (ltxPosId && ltx[ltxPosId]?.class_type === "CLIPTextEncode" && req.prompt) {
+    ltx[ltxPosId].inputs.text = req.prompt;
+  }
+
+  return { ...still, ...ltx };
 }

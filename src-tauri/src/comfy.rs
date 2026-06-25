@@ -35,24 +35,41 @@ fn unreachable(endpoint: &str) -> String {
 }
 
 /// Health check: `GET /system_stats`. Returns the raw JSON (GPU + VRAM + tier).
+/// Async + spawn_blocking so the short HTTP call never stalls the event loop.
 #[tauri::command]
-pub fn comfy_health(endpoint: String) -> Result<Value, String> {
-    let url = format!("{}/system_stats", normalize(&endpoint));
+pub async fn comfy_health(endpoint: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || health_check(&endpoint))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn health_check(endpoint: &str) -> Result<Value, String> {
+    let url = format!("{}/system_stats", normalize(endpoint));
     match ureq::get(&url).timeout(Duration::from_secs(5)).call() {
         Ok(resp) => resp.into_json::<Value>().map_err(|e| e.to_string()),
-        Err(_) => Err(unreachable(&endpoint)),
+        Err(_) => Err(unreachable(endpoint)),
     }
 }
 
-/// Generate one image from a complete ComfyUI graph. Blocks (on a Tauri command
-/// thread) until the job finishes, then returns the result image as a data URL.
+/// Generate one image (or clip) from a complete ComfyUI graph, returning the
+/// result as a data URL.
+///
+/// The command is `async` and the blocking HTTP round-trip (`run_image_job`
+/// does a `/history` poll loop with sleeps) runs on a blocking thread via
+/// `spawn_blocking`. That keeps Tauri's main/event-loop thread free, so the
+/// window stays responsive and the frontend WebSocket progress updates live
+/// throughout the generation instead of jumping 0 -> done.
 #[tauri::command]
-pub fn comfy_generate_image(
+pub async fn comfy_generate_image(
     endpoint: String,
     graph: Value,
     client_id: String,
 ) -> Result<GenResult, String> {
-    run_image_job(&normalize(&endpoint), graph, &client_id)
+    tauri::async_runtime::spawn_blocking(move || {
+        run_image_job(&normalize(&endpoint), graph, &client_id)
+    })
+    .await
+    .map_err(|e| format!("generation task failed: {e}"))?
 }
 
 /// Core of `comfy_generate_image`, split out so it can be exercised directly by

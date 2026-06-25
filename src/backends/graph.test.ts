@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildImageGraph, LocalUnsupportedError, type GraphNode } from "./graph";
-import type { ImageRequest } from "./types";
+import { buildImageGraph, buildVideoGraph, LocalUnsupportedError, type GraphNode } from "./graph";
+import type { ImageRequest, VideoRequest } from "./types";
 
 const base: Omit<ImageRequest, "conditioning"> = {
   prompt: "a serene mountain lake at dawn",
@@ -102,5 +102,72 @@ describe("buildImageGraph — multi-reference is rejected on FLUX.1 local", () =
     } catch (e) {
       expect(String((e as Error).message)).toMatch(/Train the character|Cloud backend/);
     }
+  });
+});
+
+const videoBase: VideoRequest = {
+  prompt: "a lighthouse on a cliff at sunset",
+  conditioning: { kind: "none" },
+  baseModel: "flux1-dev",
+  width: 768,
+  height: 768,
+  steps: 20,
+  seed: 7,
+  videoModel: "ltx",
+  frames: 49,
+  fps: 24,
+};
+
+describe("buildVideoGraph — 0 characters: LTX still-then-animate", () => {
+  const g = buildVideoGraph(videoBase);
+  const has = (c: string) => Object.values(g).some((n) => n.class_type === c);
+
+  it("contains both stages (FLUX still + LTX img2vid + clip output)", () => {
+    expect(has("UnetLoaderGGUF")).toBe(true);
+    expect(has("LTXVImgToVideo")).toBe(true);
+    expect(has("SaveAnimatedWEBP")).toBe(true);
+  });
+
+  it("feeds the still's decoded frame into LTX (identity solved at the still)", () => {
+    const i2v = byClass(g, "LTXVImgToVideo")!;
+    const imgRef = i2v.inputs.image as [string, number];
+    expect(g[imgRef[0]].class_type).toBe("VAEDecode");
+  });
+
+  it("drops the still's SaveImage so the only image output is the clip", () => {
+    expect(has("SaveImage")).toBe(false);
+  });
+
+  it("pulls the LTX model from the registry and reuses the T5 GGUF", () => {
+    expect(byClass(g, "CheckpointLoaderSimple")!.inputs.ckpt_name).toBe(
+      "ltxv-2b-0.9.8-distilled-fp8.safetensors",
+    );
+    expect(byClass(g, "CLIPLoaderGGUF")!.inputs.clip_name).toBe(
+      "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+    );
+  });
+
+  it("clamps LTX length to (n*8+1) and dimensions to /32", () => {
+    const i2v = byClass(g, "LTXVImgToVideo")!;
+    expect(((i2v.inputs.length as number) - 1) % 8).toBe(0);
+    expect((i2v.inputs.width as number) % 32).toBe(0);
+    expect((i2v.inputs.height as number) % 32).toBe(0);
+  });
+});
+
+describe("buildVideoGraph — Wan / character video rejected locally", () => {
+  it("Wan video throws (16GB+ / cloud only)", () => {
+    expect(() => buildVideoGraph({ ...videoBase, videoModel: "wan" })).toThrow(
+      LocalUnsupportedError,
+    );
+  });
+
+  it("untrained / 2+ character video throws via the still (multiref)", () => {
+    expect(() =>
+      buildVideoGraph({
+        ...videoBase,
+        conditioning: { kind: "multiref", refImagePaths: ["a/refs/01.jpg"] },
+      }),
+    ).toThrow(LocalUnsupportedError);
   });
 });
