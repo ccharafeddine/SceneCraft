@@ -22,6 +22,13 @@ export interface CloudFacts {
   editModel: string;
 }
 
+/** Cloud LoRA-trainer facts, for models that can be trained in the cloud. */
+export interface CloudTrainer {
+  provider: string;
+  /** fal slug for the LoRA trainer (matches the model's base). */
+  model: string;
+}
+
 export interface ModelEntry {
   id: string;
   name: string;
@@ -33,6 +40,7 @@ export interface ModelEntry {
   targetFolder: string | null;
   graphTemplates: string[];
   cloud?: CloudFacts;
+  cloudTrainer?: CloudTrainer;
   sizeGb: number | null;
   verified: boolean;
   notes: string;

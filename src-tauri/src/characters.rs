@@ -133,7 +133,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 // ---------------------------------------------------------------------------
 
 /// `<app_data>/characters`, created if missing.
-fn characters_root(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn characters_root(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -143,18 +143,18 @@ fn characters_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn char_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn char_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     Ok(characters_root(app)?.join(id))
 }
 
-fn read_character(dir: &Path) -> Result<Character, String> {
+pub(crate) fn read_character(dir: &Path) -> Result<Character, String> {
     let json_path = dir.join("character.json");
     let data = fs::read_to_string(&json_path)
         .map_err(|e| format!("read {}: {e}", json_path.display()))?;
     serde_json::from_str(&data).map_err(|e| format!("parse {}: {e}", json_path.display()))
 }
 
-fn write_character(dir: &Path, c: &Character) -> Result<(), String> {
+pub(crate) fn write_character(dir: &Path, c: &Character) -> Result<(), String> {
     let json = serde_json::to_string_pretty(c).map_err(|e| e.to_string())?;
     fs::write(dir.join("character.json"), json)
         .map_err(|e| format!("write character.json: {e}"))

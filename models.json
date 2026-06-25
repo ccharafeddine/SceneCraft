@@ -12,6 +12,7 @@
       "source": { "repo": "city96/FLUX.1-dev-gguf", "filename": "flux1-dev-Q4_K_S.gguf" },
       "targetFolder": "models/unet",
       "graphTemplates": ["txt2img_flux_lora"],
+      "cloudTrainer": { "provider": "fal", "model": "fal-ai/flux-lora-fast-training" },
       "sizeGb": 6.34,
       "verified": true,
       "notes": "Local 8GB image base. Load via UnetLoaderGGUF. FLUX.1 has no native multi-reference, so multiref/2+ routes to cloud or 16GB+."

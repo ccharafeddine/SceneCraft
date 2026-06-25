@@ -2,6 +2,7 @@ mod characters;
 mod cloud;
 mod comfy;
 mod keychain;
+mod training;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,8 @@ pub fn run() {
             keychain::has_api_key,
             keychain::delete_api_key,
             cloud::cloud_generate_image,
+            training::train_cloud,
+            training::train_local,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

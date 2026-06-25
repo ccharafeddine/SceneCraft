@@ -10,6 +10,8 @@ import {
   type Character,
   type CharacterType,
 } from "../lib/characters";
+import { MIN_ALBUM, trainerFor, type TrainerMode } from "../backends/training";
+import type { JobStatus } from "../backends/types";
 import "./CharacterEditor.css";
 
 const IMAGE_EXTENSIONS = [
@@ -56,7 +58,10 @@ export function CharacterEditor(props: CharacterEditorProps) {
   const [loadError, setLoadError] = createSignal<string | null>(null);
   const [saveError, setSaveError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
-  const [trainNote, setTrainNote] = createSignal<string | null>(null);
+  const [trainerMode, setTrainerMode] = createSignal<TrainerMode>("cloud");
+  const [trainStatus, setTrainStatus] = createSignal<JobStatus | null>(null);
+  const isTraining = () =>
+    trainStatus()?.state === "running" || trainStatus()?.state === "queued";
 
   // Live-edited field mirrors (so typing/dragging feels instant; persistence
   // happens on commit). Seeded from the loaded character.
@@ -153,6 +158,33 @@ export function CharacterEditor(props: CharacterEditorProps) {
     }
   }
 
+  async function startTrain() {
+    const ch = character();
+    if (!ch) return;
+    const trainer = trainerFor(trainerMode());
+    setTrainStatus({ id: "", state: "queued", progress: 0, message: "Starting…" });
+    const handle = await trainer.startTraining({
+      characterId: ch.id,
+      // characters-root-relative paths (the trainer zips them).
+      refImagePaths: ch.ref_images.map((r) => `${ch.id}/${r}`),
+      trigger: ch.trigger,
+      baseModel: ch.base_model,
+    });
+    const tick = async () => {
+      const s = await trainer.pollJob(handle.id);
+      setTrainStatus(s);
+      if (s.state === "done") {
+        // .safetensors landed + character.json flipped: reload to show "Trained".
+        const fresh = await getCharacter(props.id);
+        setCharacter(fresh);
+        props.onChanged();
+      } else if (s.state !== "error") {
+        setTimeout(tick, 500);
+      }
+    };
+    void tick();
+  }
+
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
       <div class="editor" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -247,16 +279,62 @@ export function CharacterEditor(props: CharacterEditorProps) {
                     </Show>
                   </div>
 
-                  <button type="button" class="btn train-btn" onClick={() => {
-                    setTrainNote(
-                      "Training is wired up in Step 14. On 8GB cards, cloud (fal) training is recommended.",
-                    );
-                  }}>
-                    Train LoRA
-                  </button>
-                  <Show when={trainNote()}>
-                    <p class="field-hint">{trainNote()}</p>
-                  </Show>
+                  {/* Training: one-time per character. Cloud (fal) is the 8GB default. */}
+                  <div class="train">
+                    <div class="segmented">
+                      <button
+                        type="button"
+                        class="segmented__btn"
+                        classList={{ "segmented__btn--active": trainerMode() === "cloud" }}
+                        onClick={() => setTrainerMode("cloud")}
+                        disabled={isTraining()}
+                      >
+                        Cloud (fal)
+                      </button>
+                      <button
+                        type="button"
+                        class="segmented__btn"
+                        classList={{ "segmented__btn--active": trainerMode() === "local" }}
+                        onClick={() => setTrainerMode("local")}
+                        disabled={isTraining()}
+                      >
+                        Local
+                      </button>
+                    </div>
+                    <p class="field-hint">
+                      {trainerMode() === "cloud"
+                        ? "Recommended for 8GB. fal trains a FLUX.1 LoRA in ~minutes (uses your fal key; a few cents to ~$1 per run). One-time per character."
+                        : "Local (ai-toolkit) is impractical on 8GB — multi-hour. For 16GB+ cards; generates a config to run ai-toolkit with."}
+                    </p>
+                    <button
+                      type="button"
+                      class="btn btn--primary train-btn"
+                      disabled={isTraining() || c().ref_images.length < MIN_ALBUM}
+                      onClick={startTrain}
+                    >
+                      {isTraining()
+                        ? "Training…"
+                        : c().lora_path
+                          ? "Re-train LoRA"
+                          : "Train LoRA"}
+                    </button>
+                    <Show when={c().ref_images.length < MIN_ALBUM}>
+                      <p class="field-hint">
+                        Add at least {MIN_ALBUM} reference images to train (have{" "}
+                        {c().ref_images.length}).
+                      </p>
+                    </Show>
+                    <Show when={trainStatus()}>
+                      {(s) => (
+                        <Show
+                          when={s().state !== "error"}
+                          fallback={<p class="new-form__error">{s().error}</p>}
+                        >
+                          <p class="field-hint">{s().message ?? s().state}</p>
+                        </Show>
+                      )}
+                    </Show>
+                  </div>
 
                   <button type="button" class="btn btn--danger" disabled={busy()} onClick={remove}>
                     Delete character

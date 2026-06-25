@@ -147,8 +147,14 @@
   border-color: #1e8e4e;
 }
 
+.train {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .train-btn {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .btn--danger {

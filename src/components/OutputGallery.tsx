@@ -5,7 +5,7 @@ import "./OutputGallery.css";
 /** View model for a job tracked in the gallery. */
 export interface JobView {
   id: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "lora";
   prompt: string;
   status: JobStatus;
   createdAt: number;

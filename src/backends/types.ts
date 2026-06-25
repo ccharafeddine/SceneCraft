@@ -51,7 +51,7 @@ export interface VideoRequest {
 
 export interface JobHandle {
   id: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "lora";
 }
 
 export type JobState = "queued" | "running" | "done" | "error";
