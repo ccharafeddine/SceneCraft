@@ -5,6 +5,7 @@ import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
 import { OutputGallery, type JobView } from "./components/OutputGallery";
 import { LocalBackend } from "./backends/local";
 import type { ImageRequest, JobHandle, VideoRequest } from "./backends/types";
+import { routeConditioning } from "./lib/routing";
 import {
   createCharacter,
   listCharacters,
@@ -65,12 +66,12 @@ function App() {
   }
 
   // --- generation ---
-  // Conditioning is hardcoded to "none" until routing lands in Step 7; the
-  // active cast is shown in the prompt panel but not yet injected.
+  // Routing turns the active cast into conditioning (LoRA / multi-reference /
+  // none). The stub backend ignores it; the real backends (Steps 9-10) act on it.
   function buildImageRequest(input: GenerateInput): ImageRequest {
     return {
       prompt: input.prompt,
-      conditioning: { kind: "none" },
+      conditioning: routeConditioning(activeCharacters()),
       baseModel: "flux2-dev",
       width: input.width,
       height: input.height,
@@ -81,7 +82,7 @@ function App() {
   function buildVideoRequest(input: GenerateInput): VideoRequest {
     return {
       prompt: input.prompt,
-      conditioning: { kind: "none" },
+      conditioning: routeConditioning(activeCharacters()),
       baseModel: "flux2-dev",
       width: input.width,
       height: input.height,
