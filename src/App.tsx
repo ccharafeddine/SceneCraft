@@ -1,5 +1,6 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { CastPanel } from "./components/CastPanel";
+import { CharacterEditor } from "./components/CharacterEditor";
 import {
   createCharacter,
   listCharacters,
@@ -15,6 +16,7 @@ function App() {
   const [enabledIds, setEnabledIds] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [editingId, setEditingId] = createSignal<string | null>(null);
 
   async function refresh() {
     try {
@@ -42,9 +44,12 @@ function App() {
     return created;
   }
 
-  function openEditor(id: string) {
-    // The character editor arrives in Step 4.
-    console.info("[scenecraft] open editor for", id);
+  function handleDeleted(id: string) {
+    const next = new Set(enabledIds());
+    next.delete(id);
+    setEnabledIds(next);
+    setEditingId(null);
+    void refresh();
   }
 
   return (
@@ -56,13 +61,24 @@ function App() {
         error={error()}
         onToggle={toggle}
         onCreate={handleCreate}
-        onOpenEditor={openEditor}
+        onOpenEditor={setEditingId}
       />
       <main class="workspace">
         <div class="workspace__placeholder">
           <p>Prompt &amp; output arrive in Step 6.</p>
         </div>
       </main>
+
+      <Show when={editingId()}>
+        {(id) => (
+          <CharacterEditor
+            id={id()}
+            onClose={() => setEditingId(null)}
+            onChanged={refresh}
+            onDeleted={handleDeleted}
+          />
+        )}
+      </Show>
     </div>
   );
 }

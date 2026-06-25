@@ -1,0 +1,246 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+}
+
+.editor {
+  width: min(880px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.editor__loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editor__title-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.editor__id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.editor__close:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.editor__error {
+  color: #c0392b;
+}
+
+.editor__error--banner {
+  margin: 0;
+  padding: 10px 20px;
+  background: rgba(192, 57, 43, 0.1);
+  font-size: 0.85rem;
+}
+
+.editor__body {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* --- settings column --- */
+
+.editor__settings {
+  width: 240px;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-row__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field-row__value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.field-hint {
+  margin: -6px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.badge {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.badge--none {
+  color: var(--text-muted);
+}
+
+.badge--ok {
+  color: #1e8e4e;
+  border-color: #1e8e4e;
+}
+
+.train-btn {
+  margin-top: 4px;
+}
+
+.btn--danger {
+  margin-top: auto;
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.4);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: #c0392b;
+}
+
+/* --- album column --- */
+
+.editor__album {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.album__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.album__title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.album__count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.album__empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.album__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.ref-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+}
+
+.ref-cell__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ref-cell__loading {
+  width: 100%;
+  height: 100%;
+}
+
+.ref-cell__thumb-btn {
+  position: absolute;
+  inset: auto 0 0 0;
+  border: none;
+  padding: 5px;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.ref-cell:hover .ref-cell__thumb-btn {
+  opacity: 1;
+}

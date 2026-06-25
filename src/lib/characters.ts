@@ -59,3 +59,7 @@ export function setThumb(id: string, refPath: string): Promise<void> {
 export function getThumbnail(id: string): Promise<string | null> {
   return invoke("get_thumbnail", { id });
 }
+
+export function getRefImage(id: string, refPath: string): Promise<string | null> {
+  return invoke("get_ref_image", { id, refPath });
+}

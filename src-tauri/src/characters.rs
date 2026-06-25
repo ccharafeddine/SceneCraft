@@ -373,6 +373,26 @@ pub fn get_thumbnail(app: AppHandle, id: String) -> Result<Option<String>, Strin
     Ok(Some(format!("data:{mime};base64,{}", base64_encode(&bytes))))
 }
 
+/// Return a reference image (under the character's `refs/`) as a data URL.
+/// Rejects anything outside `refs/` so a crafted path can't read the disk.
+#[tauri::command]
+pub fn get_ref_image(
+    app: AppHandle,
+    id: String,
+    ref_path: String,
+) -> Result<Option<String>, String> {
+    if ref_path.contains("..") || !ref_path.starts_with("refs/") {
+        return Err(format!("invalid ref path '{ref_path}'"));
+    }
+    let path = char_dir(&app, &id)?.join(&ref_path);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let mime = sniff_mime(&bytes);
+    Ok(Some(format!("data:{mime};base64,{}", base64_encode(&bytes))))
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

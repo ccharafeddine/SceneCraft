@@ -4,6 +4,7 @@ mod characters;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             characters::create_character,
             characters::list_characters,
@@ -13,6 +14,7 @@ pub fn run() {
             characters::import_refs,
             characters::set_thumb,
             characters::get_thumbnail,
+            characters::get_ref_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
