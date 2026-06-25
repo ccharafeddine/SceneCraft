@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "_comment": "Single source of truth for model + hardware-tier facts. Code (local backend, connection/tier check) and the README hardware-tiers table derive from this file. Update here, not in code or docs. The 8GB FLUX.1 set was verified end-to-end in Step 8; video + FLUX.2 entries are marked verified:false until Steps 10-12 exercise them.",
+  "models": [
+    {
+      "id": "flux1-dev",
+      "name": "FLUX.1 dev (GGUF Q4_K_S)",
+      "type": "image",
+      "backends": ["local"],
+      "quant": "Q4_K_S",
+      "minVramGb": 8,
+      "source": { "repo": "city96/FLUX.1-dev-gguf", "filename": "flux1-dev-Q4_K_S.gguf" },
+      "targetFolder": "models/unet",
+      "graphTemplates": ["txt2img_flux_lora"],
+      "sizeGb": 6.34,
+      "verified": true,
+      "notes": "Local 8GB image base. Load via UnetLoaderGGUF. FLUX.1 has no native multi-reference, so multiref/2+ routes to cloud or 16GB+."
+    },
+    {
+      "id": "t5xxl-q5km",
+      "name": "T5-XXL encoder (GGUF Q5_K_M)",
+      "type": "encoder",
+      "backends": ["local"],
+      "quant": "Q5_K_M",
+      "minVramGb": 8,
+      "source": { "repo": "city96/t5-v1_1-xxl-encoder-gguf", "filename": "t5-v1_1-xxl-encoder-Q5_K_M.gguf" },
+      "targetFolder": "models/text_encoders",
+      "graphTemplates": ["txt2img_flux_lora", "txt2img_flux_multiref"],
+      "sizeGb": 3.15,
+      "verified": true,
+      "notes": "Quantized T5 for FLUX.1. NOT the fp16 (~9GB) which blows the 8GB budget. Load via DualCLIPLoaderGGUF (type flux) alongside clip_l."
+    },
+    {
+      "id": "clip-l",
+      "name": "CLIP-L text encoder",
+      "type": "encoder",
+      "backends": ["local"],
+      "quant": null,
+      "minVramGb": 8,
+      "source": { "repo": "comfyanonymous/flux_text_encoders", "filename": "clip_l.safetensors" },
+      "targetFolder": "models/text_encoders",
+      "graphTemplates": ["txt2img_flux_lora", "txt2img_flux_multiref"],
+      "sizeGb": 0.235,
+      "verified": true,
+      "notes": "FLUX is dual-encoder: CLIP-L + T5. Required second encoder."
+    },
+    {
+      "id": "flux1-vae",
+      "name": "FLUX.1 VAE (ae.safetensors)",
+      "type": "vae",
+      "backends": ["local"],
+      "quant": null,
+      "minVramGb": 8,
+      "source": { "repo": "Comfy-Org/z_image_turbo", "filename": "split_files/vae/ae.safetensors" },
+      "targetFolder": "models/vae",
+      "graphTemplates": ["txt2img_flux_lora", "txt2img_flux_multiref"],
+      "sizeGb": 0.335,
+      "verified": true,
+      "notes": "Ungated Comfy-Org mirror of the FLUX.1 VAE (byte-exact 335,304,388). The official Black Forest Labs FLUX.1 repos gate the VAE behind a login."
+    },
+    {
+      "id": "ltx-video",
+      "name": "LTX-Video (image-to-video, stylized)",
+      "type": "video",
+      "backends": ["local"],
+      "quant": null,
+      "minVramGb": 8,
+      "source": { "repo": "Lightricks/LTX-Video", "filename": null },
+      "targetFolder": "models/checkpoints",
+      "graphTemplates": ["img2vid_ltx"],
+      "sizeGb": null,
+      "verified": false,
+      "notes": "Stylized i2v, runs on 8GB. Confirm exact filename + node pack at Step 11."
+    },
+    {
+      "id": "wan-2.2-1.3b",
+      "name": "Wan 2.2 1.3B (image-to-video, photoreal)",
+      "type": "video",
+      "backends": ["local"],
+      "quant": null,
+      "minVramGb": 8,
+      "source": { "repo": null, "filename": null },
+      "targetFolder": "models/diffusion_models",
+      "graphTemplates": ["img2vid_wan"],
+      "sizeGb": null,
+      "verified": false,
+      "notes": "Low-res photoreal i2v that fits 8GB. Weights from the Wan-AI HF org; node pack kijai/ComfyUI-WanVideoWrapper. Confirm repo/filename at Step 11."
+    },
+    {
+      "id": "wan-2.2-14b",
+      "name": "Wan 2.2 14B (image-to-video, photoreal)",
+      "type": "video",
+      "backends": ["local"],
+      "quant": null,
+      "minVramGb": 16,
+      "source": { "repo": null, "filename": null },
+      "targetFolder": "models/diffusion_models",
+      "graphTemplates": ["img2vid_wan"],
+      "sizeGb": null,
+      "verified": false,
+      "notes": "Full photoreal i2v; wants 16GB+ (12GB with patience). Weights from the Wan-AI HF org; node pack kijai/ComfyUI-WanVideoWrapper. Confirm repo/filename at Step 11."
+    },
+    {
+      "id": "flux2-dev",
+      "name": "FLUX.2 dev (FP8)",
+      "type": "image",
+      "backends": ["cloud", "local"],
+      "quant": "fp8",
+      "minVramGb": 16,
+      "source": { "repo": "Comfy-Org/flux2-dev", "filename": "flux2_dev_fp8mixed.safetensors" },
+      "targetFolder": "models/diffusion_models",
+      "graphTemplates": ["txt2img_flux_multiref", "txt2img_flux_lora"],
+      "sizeGb": 35,
+      "verified": false,
+      "notes": "Cloud/16GB+ image base. The only path with native multi-reference (group scenes, untrained solo). Needs companion Mistral encoder + flux2 VAE from Comfy-Org/flux2-dev. Default for the 8GB tier's multiref/2+ via the cloud backend."
+    }
+  ],
+  "tiers": [
+    {
+      "id": "8gb",
+      "label": "8GB (e.g. RTX 3070)",
+      "minVramGb": 8,
+      "imageModel": "flux1-dev",
+      "videoModels": ["ltx-video", "wan-2.2-1.3b"],
+      "training": "cloud",
+      "notes": "FLUX.1 local; FLUX.2 + multi-reference (2+ chars) need cloud or 16GB+."
+    },
+    {
+      "id": "16gb",
+      "label": "12-16GB",
+      "minVramGb": 12,
+      "imageModel": "flux2-dev",
+      "videoModels": ["wan-2.2-14b", "ltx-video"],
+      "training": "local",
+      "notes": "Solid all-rounder."
+    },
+    {
+      "id": "24gb",
+      "label": "24GB+",
+      "minVramGb": 24,
+      "imageModel": "flux2-dev",
+      "videoModels": ["wan-2.2-14b"],
+      "training": "local",
+      "notes": "Full quality."
+    },
+    {
+      "id": "cloud",
+      "label": "Cloud (any hardware)",
+      "minVramGb": 0,
+      "imageModel": "flux2-dev",
+      "videoModels": [],
+      "training": "cloud",
+      "notes": "BYOK; FLUX.2 image/training, cloud video (Kling/Veo/Runway). No Sora."
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { OutputGallery, type JobView } from "./components/OutputGallery";
 import { LocalBackend } from "./backends/local";
 import type { ImageRequest, JobHandle, VideoRequest } from "./backends/types";
 import { routeConditioning } from "./lib/routing";
+import { defaultLocalImageModel } from "./lib/models";
 import {
   createCharacter,
   listCharacters,
@@ -68,11 +69,13 @@ function App() {
   // --- generation ---
   // Routing turns the active cast into conditioning (LoRA / multi-reference /
   // none). The stub backend ignores it; the real backends (Steps 9-10) act on it.
+  // The base model comes from the registry (models.json), not a hardcoded string;
+  // once the connection check reads VRAM (Step 13) this becomes tier-aware.
   function buildImageRequest(input: GenerateInput): ImageRequest {
     return {
       prompt: input.prompt,
       conditioning: routeConditioning(activeCharacters()),
-      baseModel: "flux1-dev",
+      baseModel: defaultLocalImageModel().id,
       width: input.width,
       height: input.height,
       steps: input.steps,
@@ -83,7 +86,7 @@ function App() {
     return {
       prompt: input.prompt,
       conditioning: routeConditioning(activeCharacters()),
-      baseModel: "flux1-dev",
+      baseModel: defaultLocalImageModel().id,
       width: input.width,
       height: input.height,
       steps: input.steps,

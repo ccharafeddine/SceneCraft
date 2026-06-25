@@ -54,10 +54,12 @@ Local generation is an NVIDIA/CUDA world. Apple Silicon runs local **image** gen
 
 | GPU VRAM | Image | Video | LoRA training | Notes |
 |---|---|---|---|---|
-| 8GB (e.g. RTX 3070) | FLUX.1 dev GGUF Q4_K_S (~6.8GB, `--lowvram`) | LTX-Video (stylized), Wan 1.3B (low-res photoreal) | Impractical locally (8GB VRAM / 16GB RAM); use cloud (fal) | FLUX.2 + multi-reference (2+ chars) need cloud or 16GB+ |
+| 8GB (e.g. RTX 3070) | FLUX.1 dev GGUF Q4_K_S (~6.34GB, `--lowvram`) | LTX-Video (stylized), Wan 1.3B (low-res photoreal) | Impractical locally (8GB VRAM / 16GB RAM); use cloud (fal) | FLUX.2 + multi-reference (2+ chars) need cloud or 16GB+ |
 | 12-16GB | FLUX.2 Dev FP8 | Wan 14B (12GB with patience, 16GB comfortable), LTX | Local viable | Solid all-rounder |
 | 24GB+ | FLUX.2 Dev FP8/full | Wan 14B, HunyuanVideo | Local fast | Full quality |
 | Apple Silicon (M-series) | FLUX via MPS, slow | Not viable locally | Slow/nascent | Use cloud for video |
+
+> This table is derived from [`models.json`](./models.json), the single source of truth for model facts. Update the registry, not this table — code (the local backend and connection/tier check) selects the tier from it by detected VRAM.
 
 The backend toggle exists precisely so hardware limits are never a hard block: train and generate what your card handles locally, flip to cloud for the rest.
 
@@ -275,6 +277,7 @@ You are building this app from this repo. Workflow:
 4. The fast-moving specifics (FLUX.1/FLUX.2 node names, exact model filenames, current video node packs) should be pulled fresh from the linked ComfyUI/city96 docs at build time, not assumed from this README.
 5. Keep the app's responsibility narrow: it talks to a ComfyUI endpoint and cloud APIs. It does not install or manage ComfyUI.
 6. Honor the stack and conventions in `CLAUDE.md` (SolidJS prop access without destructuring, keys in the keychain, no telemetry).
+7. Treat [`models.json`](./models.json) (repo root) as the single source of truth for model + tier facts. At steps 8-9, **detect VRAM first** (`nvidia-smi`) and auto-select the matching tier from the registry (8GB → FLUX.1 dev Q4_K_S; 16GB+ → FLUX.2). Do not hardcode model filenames, sources, or tiers in code or docs — add or edit registry entries instead.
 
 To start: open a terminal in this folder, run Claude Code, and instruct it to begin at step 1 of the `CLAUDE.md` build plan.
 
