@@ -41,10 +41,24 @@ export function collectRefs(active: Character[], max = MAX_MULTIREF): string[] {
   }
 }
 
-/** Decide how to condition a generation on the active cast. */
-export function routeConditioning(active: Character[]): Conditioning {
+export type RouteBackend = "local" | "cloud";
+
+/**
+ * Decide how to condition a generation on the active cast, for the active
+ * backend. Local (FLUX.1) uses a trained LoRA when it has one; Cloud (FLUX.2)
+ * uses native multi-reference for identity — it can't load the local FLUX.1
+ * LoRAs — so any active cast routes to references on cloud.
+ */
+export function routeConditioning(
+  active: Character[],
+  backend: RouteBackend = "local",
+): Conditioning {
   if (active.length === 0) {
     return { kind: "none" };
+  }
+
+  if (backend === "cloud") {
+    return { kind: "multiref", refImagePaths: collectRefs(active) };
   }
 
   if (active.length === 1) {

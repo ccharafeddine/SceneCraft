@@ -10,6 +10,7 @@ interface CastPanelProps {
   onToggle: (id: string) => void;
   onCreate: (name: string, type: CharacterType) => Promise<unknown>;
   onOpenEditor: (id: string) => void;
+  onOpenSettings: () => void;
 }
 
 /** Up to two initials, for the placeholder when a character has no thumbnail. */
@@ -106,6 +107,9 @@ export function CastPanel(props: CastPanelProps) {
     <aside class="cast">
       <header class="cast__header">
         <h2 class="cast__title">Cast</h2>
+        <button type="button" class="cast__settings" title="Settings" onClick={props.onOpenSettings}>
+          ⚙
+        </button>
       </header>
 
       <div class="cast__list">

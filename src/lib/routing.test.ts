@@ -102,3 +102,24 @@ describe("collectRefs", () => {
     expect(collectRefs([a, b], 10).length).toBe(4);
   });
 });
+
+describe("routeConditioning — cloud backend (FLUX.2 multi-reference)", () => {
+  it("0 characters still routes to none on cloud", () => {
+    expect(routeConditioning([], "cloud").kind).toBe("none");
+  });
+
+  it("a single trained character routes to multiref on cloud, not lora", () => {
+    // FLUX.2 cloud can't load FLUX.1 LoRAs, so it uses references for identity.
+    const c = mkChar("joe", { lora_path: "lora/joe.safetensors", ref_images: refs(5) });
+    const cond = routeConditioning([c], "cloud");
+    expect(cond.kind).toBe("multiref");
+    if (cond.kind === "multiref") {
+      expect(cond.refImagePaths[0]).toBe("joe/refs/01.jpg");
+    }
+  });
+
+  it("the same trained character still uses its LoRA on local (regression)", () => {
+    const c = mkChar("joe", { lora_path: "lora/joe.safetensors", ref_images: refs(5) });
+    expect(routeConditioning([c], "local").kind).toBe("lora");
+  });
+});

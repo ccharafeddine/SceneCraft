@@ -110,6 +110,7 @@
       "source": { "repo": "Comfy-Org/flux2-dev", "filename": "flux2_dev_fp8mixed.safetensors" },
       "targetFolder": "models/diffusion_models",
       "graphTemplates": ["txt2img_flux_multiref", "txt2img_flux_lora"],
+      "cloud": { "provider": "fal", "textModel": "fal-ai/flux-2-pro", "editModel": "fal-ai/flux-2/edit" },
       "sizeGb": 35,
       "verified": false,
       "notes": "Cloud/16GB+ image base. The only path with native multi-reference (group scenes, untrained solo). Needs companion Mistral encoder + flux2 VAE from Comfy-Org/flux2-dev. Default for the 8GB tier's multiref/2+ via the cloud backend."

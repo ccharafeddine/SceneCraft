@@ -13,6 +13,15 @@ export interface ModelSource {
   filename: string | null;
 }
 
+/** Cloud provider facts (fal.ai), for models that have a cloud entry. */
+export interface CloudFacts {
+  provider: string;
+  /** fal slug for plain text-to-image. */
+  textModel: string;
+  /** fal slug for image-with-references (multi-reference identity). */
+  editModel: string;
+}
+
 export interface ModelEntry {
   id: string;
   name: string;
@@ -23,6 +32,7 @@ export interface ModelEntry {
   source: ModelSource;
   targetFolder: string | null;
   graphTemplates: string[];
+  cloud?: CloudFacts;
   sizeGb: number | null;
   verified: boolean;
   notes: string;

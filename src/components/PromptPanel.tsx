@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Character } from "../lib/characters";
-import type { VideoModel } from "../backends/types";
+import type { BackendMode, VideoModel } from "../backends/types";
 import "./PromptPanel.css";
 
 export interface GenerateInput {
@@ -16,6 +16,7 @@ export interface GenerateInput {
 
 interface PromptPanelProps {
   activeCharacters: Character[];
+  backendMode: BackendMode;
   onGenerate: (input: GenerateInput) => void;
 }
 
@@ -40,9 +41,10 @@ export function PromptPanel(props: PromptPanelProps) {
   const canGenerate = () =>
     prompt().trim().length > 0 || props.activeCharacters.length > 0;
 
-  // FLUX.1 local can only generate a character that has a trained LoRA, and only
-  // one at a time. Anything else (untrained, or 2+) needs cloud/16GB+ FLUX.2.
+  // On Local (FLUX.1) only a single trained-LoRA character can render; anything
+  // else (untrained, or 2+) needs Cloud (FLUX.2). On Cloud there's no such block.
   const localBlocked = () => {
+    if (props.backendMode === "cloud") return false;
     const cast = props.activeCharacters;
     if (cast.length === 0) return false;
     if (cast.length === 1 && cast[0].lora_path) return false;

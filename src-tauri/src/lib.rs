@@ -1,5 +1,7 @@
 mod characters;
+mod cloud;
 mod comfy;
+mod keychain;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +20,10 @@ pub fn run() {
             characters::get_ref_image,
             comfy::comfy_health,
             comfy::comfy_generate_image,
+            keychain::set_api_key,
+            keychain::has_api_key,
+            keychain::delete_api_key,
+            cloud::cloud_generate_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,8 +3,16 @@ import { CastPanel } from "./components/CastPanel";
 import { CharacterEditor } from "./components/CharacterEditor";
 import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
 import { OutputGallery, type JobView } from "./components/OutputGallery";
+import { SettingsModal } from "./components/SettingsModal";
 import { LocalBackend } from "./backends/local";
-import type { ImageRequest, JobHandle, VideoRequest } from "./backends/types";
+import { CloudBackend } from "./backends/cloud";
+import type {
+  BackendMode,
+  GenerationBackend,
+  ImageRequest,
+  JobHandle,
+  VideoRequest,
+} from "./backends/types";
 import { routeConditioning } from "./lib/routing";
 import { defaultLocalImageModel } from "./lib/models";
 import {
@@ -16,17 +24,29 @@ import {
 import "./App.css";
 
 function App() {
-  // Cast list from disk, plus which characters are active this session.
-  // `enabledIds` is runtime-only (never persisted) and drives routing later.
   const [characters, setCharacters] = createSignal<Character[]>([]);
   const [enabledIds, setEnabledIds] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [jobs, setJobs] = createSignal<JobView[]>([]);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
 
-  // Default backend is the Local stub. The Local | Cloud toggle lands in Step 13.
-  const backend = new LocalBackend();
+  // Backend selection (Local | Cloud), persisted across sessions. The library,
+  // routing, and prompt flow are identical regardless; only the backend swaps.
+  const stored = localStorage.getItem("backendMode");
+  const [backendMode, setBackendModeRaw] = createSignal<BackendMode>(
+    stored === "cloud" ? "cloud" : "local",
+  );
+  function setBackendMode(mode: BackendMode) {
+    setBackendModeRaw(mode);
+    localStorage.setItem("backendMode", mode);
+  }
+
+  const localBackend = new LocalBackend();
+  const cloudBackend = new CloudBackend();
+  const backendFor = (): GenerationBackend =>
+    backendMode() === "cloud" ? cloudBackend : localBackend;
 
   const activeCharacters = createMemo(() =>
     characters().filter((c) => enabledIds().has(c.id)),
@@ -67,15 +87,13 @@ function App() {
   }
 
   // --- generation ---
-  // Routing turns the active cast into conditioning (LoRA / multi-reference /
-  // none). The stub backend ignores it; the real backends (Steps 9-10) act on it.
-  // The base model comes from the registry (models.json), not a hardcoded string;
-  // once the connection check reads VRAM (Step 13) this becomes tier-aware.
+  // Routing turns the active cast into conditioning for the active backend:
+  // Local (FLUX.1) uses LoRA when trained; Cloud (FLUX.2) uses multi-reference.
   function buildImageRequest(input: GenerateInput): ImageRequest {
     return {
       prompt: input.prompt,
-      conditioning: routeConditioning(activeCharacters()),
-      baseModel: defaultLocalImageModel().id,
+      conditioning: routeConditioning(activeCharacters(), backendMode()),
+      baseModel: backendMode() === "cloud" ? "flux2-dev" : defaultLocalImageModel().id,
       width: input.width,
       height: input.height,
       steps: input.steps,
@@ -85,8 +103,8 @@ function App() {
   function buildVideoRequest(input: GenerateInput): VideoRequest {
     return {
       prompt: input.prompt,
-      conditioning: routeConditioning(activeCharacters()),
-      baseModel: defaultLocalImageModel().id,
+      conditioning: routeConditioning(activeCharacters(), backendMode()),
+      baseModel: backendMode() === "cloud" ? "flux2-dev" : defaultLocalImageModel().id,
       width: input.width,
       height: input.height,
       steps: input.steps,
@@ -96,7 +114,7 @@ function App() {
     };
   }
 
-  function poll(id: string) {
+  function poll(backend: GenerationBackend, id: string) {
     const tick = async () => {
       let next;
       try {
@@ -113,6 +131,7 @@ function App() {
   }
 
   async function handleGenerate(input: GenerateInput) {
+    const backend = backendFor();
     let handle: JobHandle;
     try {
       handle =
@@ -131,7 +150,7 @@ function App() {
       createdAt: Date.now(),
     };
     setJobs((prev) => [view, ...prev]);
-    poll(handle.id);
+    poll(backend, handle.id);
   }
 
   return (
@@ -144,9 +163,14 @@ function App() {
         onToggle={toggle}
         onCreate={handleCreate}
         onOpenEditor={setEditingId}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <main class="workspace">
-        <PromptPanel activeCharacters={activeCharacters()} onGenerate={handleGenerate} />
+        <PromptPanel
+          activeCharacters={activeCharacters()}
+          backendMode={backendMode()}
+          onGenerate={handleGenerate}
+        />
         <OutputGallery jobs={jobs()} />
       </main>
 
@@ -159,6 +183,14 @@ function App() {
             onDeleted={handleDeleted}
           />
         )}
+      </Show>
+
+      <Show when={settingsOpen()}>
+        <SettingsModal
+          mode={backendMode()}
+          onModeChange={setBackendMode}
+          onClose={() => setSettingsOpen(false)}
+        />
       </Show>
     </div>
   );
