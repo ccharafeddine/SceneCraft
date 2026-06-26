@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { BackendMode } from "../backends/types";
 import { checkComfy, type ComfyStatus } from "../lib/comfy";
 import "./SettingsModal.css";
@@ -9,6 +10,8 @@ interface SettingsModalProps {
   onModeChange: (mode: BackendMode) => void;
   endpoint: string;
   onEndpointChange: (url: string) => void;
+  outputFolder: string;
+  onOutputFolderChange: (path: string) => void;
   onClose: () => void;
 }
 
@@ -25,6 +28,11 @@ export function SettingsModal(props: SettingsModalProps) {
 
   async function refreshKey() {
     setHasKey(await invoke<boolean>("has_api_key", { provider: "fal" }).catch(() => false));
+  }
+
+  async function pickFolder() {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked === "string") props.onOutputFolderChange(picked);
   }
 
   async function checkConnection() {
@@ -153,6 +161,26 @@ export function SettingsModal(props: SettingsModalProps) {
             <p class="field-hint">
               The app talks to a ComfyUI you run; it never installs or manages it. Default
               http://127.0.0.1:8188 (can point at another machine on your network).
+            </p>
+          </section>
+
+          <section class="settings__section">
+            <span class="field-row__label">Output folder</span>
+            <div class="settings__keyrow">
+              <input
+                class="field"
+                type="text"
+                readonly
+                value={props.outputFolder}
+                placeholder="(default)"
+              />
+              <button type="button" class="btn" onClick={pickFolder}>
+                Change
+              </button>
+            </div>
+            <p class="field-hint">
+              Every generated image and video is saved here as a real file; the gallery reloads from
+              it on launch.
             </p>
           </section>
 

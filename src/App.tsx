@@ -10,12 +10,19 @@ import type {
   BackendMode,
   GenerationBackend,
   ImageRequest,
-  JobHandle,
   VideoRequest,
 } from "./backends/types";
 import { routeConditioning } from "./lib/routing";
 import { defaultLocalImageModel } from "./lib/models";
 import { checkComfy } from "./lib/comfy";
+import {
+  defaultOutputFolder,
+  deleteOutput,
+  listOutputs,
+  revealOutput,
+  saveOutput,
+  type SavedOutput,
+} from "./lib/outputs";
 import {
   createCharacter,
   listCharacters,
@@ -23,6 +30,10 @@ import {
   type CharacterType,
 } from "./lib/characters";
 import "./App.css";
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 1_000_000_000_000);
+}
 
 function App() {
   const [characters, setCharacters] = createSignal<Character[]>([]);
@@ -33,8 +44,6 @@ function App() {
   const [jobs, setJobs] = createSignal<JobView[]>([]);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
 
-  // Backend selection (Local | Cloud), persisted across sessions. The library,
-  // routing, and prompt flow are identical regardless; only the backend swaps.
   const stored = localStorage.getItem("backendMode");
   const [backendMode, setBackendModeRaw] = createSignal<BackendMode>(
     stored === "cloud" ? "cloud" : "local",
@@ -44,8 +53,6 @@ function App() {
     localStorage.setItem("backendMode", mode);
   }
 
-  // ComfyUI endpoint (persisted). The app never manages ComfyUI; it talks to
-  // whatever endpoint is configured here.
   const [comfyEndpoint, setComfyEndpointRaw] = createSignal(
     localStorage.getItem("comfyEndpoint") || "http://127.0.0.1:8188",
   );
@@ -54,16 +61,23 @@ function App() {
     localStorage.setItem("comfyEndpoint", url);
   }
 
+  // Output folder where every generation is saved (persisted across restarts).
+  const [outputFolder, setOutputFolderRaw] = createSignal(
+    localStorage.getItem("outputFolder") || "",
+  );
+  function setOutputFolder(path: string) {
+    setOutputFolderRaw(path);
+    localStorage.setItem("outputFolder", path);
+    void loadOutputs(path);
+  }
+
   const localBackend = new LocalBackend(comfyEndpoint());
   const cloudBackend = new CloudBackend();
   const backendFor = (): GenerationBackend =>
     backendMode() === "cloud" ? cloudBackend : localBackend;
 
-  // Keep the local backend pointed at the configured endpoint.
   createEffect(() => localBackend.setEndpoint(comfyEndpoint()));
 
-  // First-run / on-change connection check (Local only): a non-blocking banner
-  // when ComfyUI is unreachable.
   const [connOk, setConnOk] = createSignal<boolean | null>(null);
   const [bannerDismissed, setBannerDismissed] = createSignal(false);
   createEffect(() => {
@@ -91,7 +105,40 @@ function App() {
     }
   }
 
-  onMount(refresh);
+  /** Load previously-saved generations from the output folder into the gallery. */
+  async function loadOutputs(folder: string) {
+    if (!folder) return;
+    try {
+      const saved = await listOutputs(folder);
+      setJobs(
+        saved.map((s) => ({
+          id: s.id,
+          kind: s.kind,
+          prompt: s.prompt,
+          status: { id: s.id, state: "done" as const, progress: 1 },
+          createdAt: Date.parse(s.created_at) || 0,
+          saved: s,
+        })),
+      );
+    } catch {
+      /* gallery starts empty if the folder can't be read */
+    }
+  }
+
+  onMount(async () => {
+    let folder = outputFolder();
+    if (!folder) {
+      try {
+        folder = await defaultOutputFolder();
+        setOutputFolderRaw(folder);
+        localStorage.setItem("outputFolder", folder);
+      } catch {
+        /* leave empty; saving will surface a clear error */
+      }
+    }
+    await loadOutputs(folder);
+    await refresh();
+  });
 
   function toggle(id: string) {
     const next = new Set(enabledIds());
@@ -115,8 +162,6 @@ function App() {
   }
 
   // --- generation ---
-  // Routing turns the active cast into conditioning for the active backend:
-  // Local (FLUX.1) uses LoRA when trained; Cloud (FLUX.2) uses multi-reference.
   function buildImageRequest(input: GenerateInput): ImageRequest {
     return {
       prompt: input.prompt,
@@ -125,6 +170,7 @@ function App() {
       width: input.width,
       height: input.height,
       steps: input.steps,
+      seed: randomSeed(),
     };
   }
 
@@ -136,6 +182,7 @@ function App() {
       width: input.width,
       height: input.height,
       steps: input.steps,
+      seed: randomSeed(),
       videoModel: input.videoModel,
       frames: input.frames,
       fps: input.fps,
@@ -150,6 +197,28 @@ function App() {
       } catch (e) {
         next = { id, state: "error" as const, progress: 0, error: String(e) };
       }
+      if (next.state === "done") {
+        const job = jobs().find((j) => j.id === id);
+        const url = next.outputs?.[0]?.url;
+        if (job && url && job.request && !job.saved && (job.kind === "image" || job.kind === "video")) {
+          try {
+            const saved = await saveOutput(
+              outputFolder(),
+              url,
+              job.kind,
+              job.prompt,
+              job.backendName ?? "local",
+              job.request as ImageRequest | VideoRequest,
+            );
+            setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: next, saved } : j)));
+            return;
+          } catch (e) {
+            const failed = { ...next, message: `Saved to gallery failed: ${e}` };
+            setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: failed } : j)));
+            return;
+          }
+        }
+      }
       setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: next } : j)));
       if (next.state !== "done" && next.state !== "error") {
         setTimeout(tick, 250);
@@ -158,14 +227,18 @@ function App() {
     void tick();
   }
 
-  async function handleGenerate(input: GenerateInput) {
-    const backend = backendFor();
-    let handle: JobHandle;
+  async function startJob(
+    backend: GenerationBackend,
+    mode: "image" | "video",
+    prompt: string,
+    request: ImageRequest | VideoRequest,
+  ) {
+    let handle;
     try {
       handle =
-        input.mode === "image"
-          ? await backend.generateImage(buildImageRequest(input))
-          : await backend.generateVideo(buildVideoRequest(input));
+        mode === "image"
+          ? await backend.generateImage(request as ImageRequest)
+          : await backend.generateVideo(request as VideoRequest);
     } catch (e) {
       setError(String(e));
       return;
@@ -173,12 +246,39 @@ function App() {
     const view: JobView = {
       id: handle.id,
       kind: handle.kind,
-      prompt: input.prompt || "(no prompt)",
+      prompt: prompt || "(no prompt)",
       status: { id: handle.id, state: "queued", progress: 0 },
       createdAt: Date.now(),
+      request,
+      backendName: backend.name,
     };
     setJobs((prev) => [view, ...prev]);
     poll(backend, handle.id);
+  }
+
+  function handleGenerate(input: GenerateInput) {
+    const backend = backendFor();
+    const request = input.mode === "image" ? buildImageRequest(input) : buildVideoRequest(input);
+    void startJob(backend, input.mode, input.prompt, request);
+  }
+
+  // --- gallery item actions ---
+  function rerun(saved: SavedOutput) {
+    const backend = saved.backend === "cloud" ? cloudBackend : localBackend;
+    void startJob(backend, saved.kind, saved.prompt, saved.request);
+  }
+
+  async function deleteItem(saved: SavedOutput) {
+    try {
+      await deleteOutput(outputFolder(), saved.filename);
+    } catch (e) {
+      setError(String(e));
+    }
+    setJobs((prev) => prev.filter((j) => j.saved?.filename !== saved.filename));
+  }
+
+  function revealItem(saved: SavedOutput) {
+    void revealOutput(outputFolder(), saved.filename).catch((e) => setError(String(e)));
   }
 
   return (
@@ -215,7 +315,13 @@ function App() {
           backendMode={backendMode()}
           onGenerate={handleGenerate}
         />
-        <OutputGallery jobs={jobs()} />
+        <OutputGallery
+          jobs={jobs()}
+          outputFolder={outputFolder()}
+          onRerun={rerun}
+          onDelete={deleteItem}
+          onReveal={revealItem}
+        />
       </main>
 
       <Show when={editingId()}>
@@ -235,6 +341,8 @@ function App() {
           onModeChange={setBackendMode}
           endpoint={comfyEndpoint()}
           onEndpointChange={setComfyEndpoint}
+          outputFolder={outputFolder()}
+          onOutputFolderChange={setOutputFolder}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>

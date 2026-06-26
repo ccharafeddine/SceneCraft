@@ -101,7 +101,7 @@ fn validate_type(t: &str) -> Result<String, String> {
 }
 
 /// RFC 3339 / ISO 8601 UTC timestamp, dependency-free.
-fn iso8601_now() -> String {
+pub(crate) fn iso8601_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -197,6 +197,36 @@ pub(crate) fn base64_encode(input: &[u8]) -> String {
         });
     }
     out
+}
+
+/// Standard base64 decode (ignores padding/whitespace), dependency-free.
+pub(crate) fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &c in s.as_bytes() {
+        if c == b'=' || c.is_ascii_whitespace() {
+            continue;
+        }
+        let v = val(c).ok_or("invalid base64")? as u32;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Ok(out)
 }
 
 /// Guess an image MIME from magic bytes so a JPEG copied into `thumb.png`

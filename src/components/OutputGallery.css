@@ -119,3 +119,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.job__submeta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.job__actions button {
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.job__actions button:hover {
+  border-color: var(--accent);
+}
+
+.job__actions .job__delete:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+}

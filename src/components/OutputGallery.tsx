@@ -1,39 +1,49 @@
-import { For, Match, Show, Switch } from "solid-js";
+import { createResource, For, Match, Show, Switch } from "solid-js";
 import type { JobOutput, JobStatus } from "../backends/types";
+import { readOutput, type SavedOutput } from "../lib/outputs";
 import "./OutputGallery.css";
 
-/** View model for a job tracked in the gallery. */
+/** View model for a gallery item: an in-flight/just-finished job, and — once
+ *  persisted — its saved metadata (which drives display + actions). */
 export interface JobView {
   id: string;
   kind: "image" | "video" | "lora";
   prompt: string;
   status: JobStatus;
   createdAt: number;
+  /** Session-only: the request used + which backend, so we can persist on done. */
+  request?: unknown;
+  backendName?: string;
+  /** Present once written to disk. */
+  saved?: SavedOutput;
 }
 
+interface GalleryProps {
+  jobs: JobView[];
+  outputFolder: string;
+  onRerun: (saved: SavedOutput) => void;
+  onDelete: (saved: SavedOutput) => void;
+  onReveal: (saved: SavedOutput) => void;
+}
+
+function mediaTag(url: string) {
+  return url.startsWith("data:video/") ? (
+    <video class="job__media-img" src={url} controls loop muted playsinline />
+  ) : (
+    <img class="job__media-img" src={url} alt="" />
+  );
+}
+
+/** Render a JobOutput (in-session, before/without persistence). */
 function OutputView(props: { output: JobOutput }) {
   const o = () => props.output;
-  const url = () => o().url;
-  // LTX returns an animated WEBP (data:image/webp) — it plays in an <img>.
-  // Real video containers (mp4/webm) use <video>. The stub video has no url.
-  const isVideoFile = () =>
-    url().startsWith("data:video/") || /\.(mp4|webm)(\?|$)/i.test(url());
   return (
     <>
       <Show
-        when={url()}
-        fallback={
-          <Show when={o().poster}>
-            <img class="job__media-img" src={o().poster!} alt="" />
-          </Show>
-        }
+        when={o().url}
+        fallback={<Show when={o().poster}>{mediaTag(o().poster!)}</Show>}
       >
-        <Show
-          when={isVideoFile()}
-          fallback={<img class="job__media-img" src={url()} alt="" />}
-        >
-          <video class="job__media-img" src={url()} controls loop muted playsinline />
-        </Show>
+        {mediaTag(o().url)}
       </Show>
       <Show when={o().type === "video"}>
         <span class="job__badge">clip</span>
@@ -42,10 +52,70 @@ function OutputView(props: { output: JobOutput }) {
   );
 }
 
-function JobCard(props: { job: JobView }) {
+/** A persisted item: loads from disk, shows metadata + actions. */
+function SavedCard(props: {
+  saved: SavedOutput;
+  folder: string;
+  onRerun: (s: SavedOutput) => void;
+  onDelete: (s: SavedOutput) => void;
+  onReveal: (s: SavedOutput) => void;
+}) {
+  const [src] = createResource(
+    () => props.saved.filename,
+    (f) => readOutput(props.folder, f),
+  );
+  const meta = () => {
+    const r = props.saved.request;
+    const bits = [
+      `${r.width}×${r.height}`,
+      `${r.steps} steps`,
+      r.seed !== undefined ? `seed ${r.seed}` : null,
+      r.baseModel,
+    ].filter(Boolean);
+    return bits.join(" · ");
+  };
+  return (
+    <>
+      <div class="job__media">
+        <Show
+          when={src()}
+          fallback={
+            <div class="job__progress-wrap">
+              <span class="job__stage">Loading…</span>
+            </div>
+          }
+        >
+          {mediaTag(src()!)}
+        </Show>
+        <Show when={props.saved.kind === "video"}>
+          <span class="job__badge">clip</span>
+        </Show>
+      </div>
+      <div class="job__meta">
+        <span class="job__kind">
+          {props.saved.kind} · {props.saved.backend}
+        </span>
+        <span class="job__prompt" title={props.saved.prompt}>
+          {props.saved.prompt}
+        </span>
+        <span class="job__submeta">{meta()}</span>
+        <div class="job__actions">
+          <button type="button" onClick={() => props.onReveal(props.saved)}>Open location</button>
+          <button type="button" onClick={() => props.onRerun(props.saved)}>Re-run</button>
+          <button type="button" class="job__delete" onClick={() => props.onDelete(props.saved)}>
+            Delete
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** An in-flight / just-finished (not-yet-persisted) job. */
+function InFlightCard(props: { job: JobView }) {
   const s = () => props.job.status;
   return (
-    <div class="job">
+    <>
       <div class="job__media">
         <Switch>
           <Match when={s().state === "error"}>
@@ -73,11 +143,11 @@ function JobCard(props: { job: JobView }) {
           {props.job.prompt}
         </span>
       </div>
-    </div>
+    </>
   );
 }
 
-export function OutputGallery(props: { jobs: JobView[] }) {
+export function OutputGallery(props: GalleryProps) {
   return (
     <div class="gallery">
       <Show
@@ -85,7 +155,21 @@ export function OutputGallery(props: { jobs: JobView[] }) {
         fallback={<div class="gallery__empty">Your generations will appear here.</div>}
       >
         <div class="gallery__grid">
-          <For each={props.jobs}>{(job) => <JobCard job={job} />}</For>
+          <For each={props.jobs}>
+            {(job) => (
+              <div class="job">
+                <Show when={job.saved} fallback={<InFlightCard job={job} />}>
+                  <SavedCard
+                    saved={job.saved!}
+                    folder={props.outputFolder}
+                    onRerun={props.onRerun}
+                    onDelete={props.onDelete}
+                    onReveal={props.onReveal}
+                  />
+                </Show>
+              </div>
+            )}
+          </For>
         </div>
       </Show>
     </div>
