@@ -150,6 +150,47 @@ npm test               # run unit tests (routing logic, etc.)
 
 The full architecture, data model, and ordered build plan live in [`CLAUDE.md`](./CLAUDE.md). Build in the 17 steps listed there, one at a time.
 
+### Build output
+
+`npm run tauri build` writes installers under `src-tauri/target/release/bundle/`:
+
+| Platform | Artifact | Location |
+|---|---|---|
+| Windows | `.msi` (WiX) and `.exe` (NSIS) | `bundle/msi/Scenecraft_<version>_x64_en-US.msi`, `bundle/nsis/Scenecraft_<version>_x64-setup.exe` |
+| macOS | `.app` and `.dmg` | `bundle/macos/Scenecraft.app`, `bundle/dmg/Scenecraft_<version>_<arch>.dmg` |
+
+The README, the [first-run acknowledgement](./FIRST_RUN_ACKNOWLEDGEMENT.md), and the MIT `LICENSE` are bundled into the installed app as resources, and the icon is generated from `icon.svg` into the full icon set.
+
+### Installing an unsigned build (important)
+
+Scenecraft ships **unsigned** by default — there is no paid code-signing certificate baked into the repo. Both desktop OSes warn on first launch of an unsigned app. This is expected; nothing is wrong with the build.
+
+- **Windows — SmartScreen.** Double-clicking the `.msi`/`.exe` may show *"Windows protected your PC."* Click **More info → Run anyway** to install. To remove the warning for a public release, sign the binary with an EV/OV Authenticode certificate (`signtool`, or Tauri's `bundle.windows.certificateThumbprint` config) — this is a per-publisher paid step, not something the repo can do for you.
+- **macOS — Gatekeeper.** An unsigned/unnotarized `.app` is blocked with *"Scenecraft can't be opened because it is from an unidentified developer."* Right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/Scenecraft.app`) to launch it once. For distribution, sign with an Apple Developer ID and **notarize** (see below).
+
+### Building the macOS `.dmg`
+
+The Windows `.msi`/`.exe` is produced by `npm run tauri build` on Windows. The macOS `.dmg` **must be built on a Mac** (Tauri does not cross-compile the macOS bundle from Windows). On an Apple Silicon or Intel Mac with the [prerequisites](#prerequisites) installed:
+
+```bash
+npm install
+npm run tauri build                 # → src-tauri/target/release/bundle/dmg/Scenecraft_<version>_<arch>.dmg
+# Universal binary (Intel + Apple Silicon in one):
+npm run tauri build -- --target universal-apple-darwin
+```
+
+To ship a signed, notarized Mac build (removes the Gatekeeper prompt), set these before building and Tauri signs + notarizes automatically:
+
+```bash
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_ID="you@example.com"
+export APPLE_PASSWORD="app-specific-password"   # appleid.apple.com → App-Specific Passwords
+export APPLE_TEAM_ID="TEAMID"
+npm run tauri build
+```
+
+Without an Apple Developer account ($99/yr), distribute the unsigned `.dmg` and tell users to right-click → Open the first time (see Gatekeeper note above).
+
 ---
 
 ## Setting up the generation engine (ComfyUI)

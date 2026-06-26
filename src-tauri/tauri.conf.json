@@ -26,6 +26,17 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Scenecraft",
+    "copyright": "MIT licensed. See LICENSE.",
+    "category": "GraphicsAndDesign",
+    "shortDescription": "Character-conditioned image and video generation. Local or cloud.",
+    "longDescription": "Create reusable characters from a reference album, train a LoRA once, then generate photorealistic or stylized images and videos of one or more of those characters anywhere, with maximum identity fidelity. Runs fully local through ComfyUI or against cloud APIs with your own keys.",
+    "licenseFile": "../LICENSE",
+    "resources": {
+      "../README.md": "README.md",
+      "../LICENSE": "LICENSE",
+      "../FIRST_RUN_ACKNOWLEDGEMENT.md": "FIRST_RUN_ACKNOWLEDGEMENT.md"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

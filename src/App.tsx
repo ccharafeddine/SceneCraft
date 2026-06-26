@@ -5,6 +5,7 @@ import { CharacterEditor } from "./components/CharacterEditor";
 import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
 import { OutputGallery, type JobView } from "./components/OutputGallery";
 import { SettingsModal } from "./components/SettingsModal";
+import { ConsentModal } from "./components/ConsentModal";
 import { LocalBackend } from "./backends/local";
 import { CloudBackend } from "./backends/cloud";
 import type {
@@ -39,6 +40,10 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000_000);
 }
 
+// Bump when the first-run acknowledgement copy materially changes; a higher
+// version re-shows the modal once to anyone who accepted an older one.
+const CONSENT_VERSION = 1;
+
 function App() {
   const [characters, setCharacters] = createSignal<Character[]>([]);
   const [enabledIds, setEnabledIds] = createSignal<Set<string>>(new Set());
@@ -47,6 +52,17 @@ function App() {
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [jobs, setJobs] = createSignal<JobView[]>([]);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+
+  // First-run acknowledgement: block the app until the user accepts the
+  // current acceptable-use terms. Persisted as the accepted version + a
+  // timestamp; re-shows only if CONSENT_VERSION is bumped.
+  const acceptedConsent = Number(localStorage.getItem("consentVersion") || "0");
+  const [consentNeeded, setConsentNeeded] = createSignal(acceptedConsent < CONSENT_VERSION);
+  function acceptConsent() {
+    localStorage.setItem("consentVersion", String(CONSENT_VERSION));
+    localStorage.setItem("consentAcceptedAt", new Date().toISOString());
+    setConsentNeeded(false);
+  }
   // Generation mode + optional uploaded input image (lifted here so the gallery's
   // "Animate" action can populate them).
   const [mode, setMode] = createSignal<"image" | "video">("image");
@@ -435,6 +451,10 @@ function App() {
           onOutputFolderChange={setOutputFolder}
           onClose={() => setSettingsOpen(false)}
         />
+      </Show>
+
+      <Show when={consentNeeded()}>
+        <ConsentModal onAccept={acceptConsent} />
       </Show>
     </div>
   );
