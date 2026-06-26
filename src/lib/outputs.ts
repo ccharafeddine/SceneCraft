@@ -45,3 +45,8 @@ export function deleteOutput(folder: string, filename: string): Promise<void> {
 export function revealOutput(folder: string, filename: string): Promise<void> {
   return invoke("reveal_output", { folder, filename });
 }
+
+/** Free space (GB) on the output folder's drive. */
+export function diskFreeGb(folder: string): Promise<number> {
+  return invoke("disk_free_gb", { folder });
+}

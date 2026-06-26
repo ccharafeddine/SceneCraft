@@ -215,8 +215,8 @@ fn run_image_job(base: &str, graph: Value, client_id: &str) -> Result<GenResult,
 }
 
 /// Pull a readable message out of ComfyUI's history error status, flagging OOM
-/// with the agreed fix order so the UI can surface it.
-fn execution_error(status: &Value) -> String {
+/// with the agreed fix order so the UI can surface it (not a raw traceback).
+pub(crate) fn execution_error(status: &Value) -> String {
     let mut detail = String::new();
     if let Some(msgs) = status.get("messages").and_then(|m| m.as_array()) {
         for m in msgs {
@@ -234,10 +234,13 @@ fn execution_error(status: &Value) -> String {
         detail = "ComfyUI reported an execution error.".to_string();
     }
     let low = detail.to_lowercase();
-    if low.contains("out of memory") || low.contains("outofmemory") || low.contains("cuda error") {
+    if low.contains("out of memory") || low.contains("outofmemory") {
         format!(
-            "Out of VRAM — {detail}\nFix order: close the NVIDIA overlay (and other GPU apps), \
-             then drop the T5 encoder to Q4_K_M."
+            "Out of VRAM on your GPU. Fix in this order:\n\
+             1. Close the NVIDIA overlay, browsers, Discord, and other GPU apps (they can hold ~2.5GB).\n\
+             2. Lower the resolution (and, for video, the length).\n\
+             3. For images, drop the T5 encoder to Q4_K_M.\n\n\
+             ({detail})"
         )
     } else {
         detail
@@ -262,5 +265,28 @@ mod tests {
         assert!(res.data_url.starts_with("data:image/"));
         assert!(res.data_url.len() > 1000, "data url should carry real image bytes");
         println!("live test produced {} ({} b64 chars)", res.filename, res.data_url.len());
+    }
+
+    fn error_status(msg: &str) -> Value {
+        serde_json::json!({
+            "status_str": "error",
+            "messages": [["execution_error", { "exception_type": "RuntimeError", "exception_message": msg }]]
+        })
+    }
+
+    #[test]
+    fn oom_error_gives_the_fix_order() {
+        let s = execution_error(&error_status("CUDA out of memory. Tried to allocate 2.00 GiB"));
+        assert!(s.contains("Out of VRAM"));
+        assert!(s.contains("Close the NVIDIA overlay"));
+        assert!(s.contains("Lower the resolution"));
+        assert!(s.contains("Q4_K_M"));
+    }
+
+    #[test]
+    fn non_oom_error_is_passed_through() {
+        let s = execution_error(&error_status("Missing node type Foo"));
+        assert!(s.contains("Missing node type Foo"));
+        assert!(!s.contains("Fix in this order"));
     }
 }

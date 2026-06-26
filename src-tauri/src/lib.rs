@@ -35,6 +35,7 @@ pub fn run() {
             outputs::delete_output,
             outputs::default_output_folder,
             outputs::reveal_output,
+            outputs::disk_free_gb,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

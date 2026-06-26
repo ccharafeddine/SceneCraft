@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { CastPanel } from "./components/CastPanel";
 import { CharacterEditor } from "./components/CharacterEditor";
 import { PromptPanel, type GenerateInput } from "./components/PromptPanel";
@@ -18,6 +19,7 @@ import { checkComfy } from "./lib/comfy";
 import {
   defaultOutputFolder,
   deleteOutput,
+  diskFreeGb,
   listOutputs,
   readOutput,
   revealOutput,
@@ -94,6 +96,30 @@ function App() {
     }
     setBannerDismissed(false);
     void checkComfy(endpoint).then((s) => setConnOk(s.ok));
+  });
+
+  // Low-disk warning on the output folder's drive (non-blocking).
+  const [diskFree, setDiskFree] = createSignal<number | null>(null);
+  const lowDisk = () => diskFree() !== null && diskFree()! < 1;
+  function checkDisk() {
+    const folder = outputFolder();
+    if (folder) void diskFreeGb(folder).then(setDiskFree).catch(() => setDiskFree(null));
+  }
+  createEffect(() => {
+    outputFolder();
+    checkDisk();
+  });
+
+  // Cloud-but-no-key warning (non-blocking; generation also errors honestly).
+  const [cloudKeyMissing, setCloudKeyMissing] = createSignal(false);
+  createEffect(() => {
+    if (backendMode() !== "cloud") {
+      setCloudKeyMissing(false);
+      return;
+    }
+    void invoke<boolean>("has_api_key", { provider: "fal" })
+      .then((has) => setCloudKeyMissing(!has))
+      .catch(() => setCloudKeyMissing(true));
   });
 
   const activeCharacters = createMemo(() =>
@@ -266,9 +292,27 @@ function App() {
   }
 
   function handleGenerate(input: GenerateInput) {
+    checkDisk();
     const backend = backendFor();
     const request = input.mode === "image" ? buildImageRequest(input) : buildVideoRequest(input);
     void startJob(backend, input.mode, input.prompt, request);
+  }
+
+  /** Retry a failed job with the same request + backend. */
+  function retryJob(job: JobView) {
+    if (!job.request) return;
+    const backend = job.backendName === "cloud" ? cloudBackend : localBackend;
+    setJobs((prev) => prev.filter((j) => j.id !== job.id));
+    void startJob(
+      backend,
+      job.kind === "video" ? "video" : "image",
+      job.prompt,
+      job.request as ImageRequest | VideoRequest,
+    );
+  }
+
+  function dismissJob(job: JobView) {
+    setJobs((prev) => prev.filter((j) => j.id !== job.id));
   }
 
   // --- gallery item actions ---
@@ -330,6 +374,25 @@ function App() {
             </span>
           </div>
         </Show>
+        <Show when={backendMode() === "cloud" && cloudKeyMissing()}>
+          <div class="warn-banner">
+            <span>Cloud backend selected, but no fal.ai API key is set — add one to generate.</span>
+            <button type="button" onClick={() => setSettingsOpen(true)}>
+              Open Settings
+            </button>
+          </div>
+        </Show>
+        <Show when={lowDisk()}>
+          <div class="warn-banner">
+            <span>
+              Low disk space: {diskFree()!.toFixed(1)} GB free on the output folder's drive —
+              generations may fail to save.
+            </span>
+            <button type="button" onClick={() => setSettingsOpen(true)}>
+              Change folder
+            </button>
+          </div>
+        </Show>
         <PromptPanel
           activeCharacters={activeCharacters()}
           backendMode={backendMode()}
@@ -346,6 +409,8 @@ function App() {
           onDelete={deleteItem}
           onReveal={revealItem}
           onAnimate={animate}
+          onRetry={retryJob}
+          onDismiss={dismissJob}
         />
       </main>
 

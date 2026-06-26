@@ -172,6 +172,16 @@ pub fn delete_output(folder: String, filename: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Free space (GB) on the output folder's drive, so the UI can warn before a
+/// generation fails to save on a full disk.
+#[tauri::command]
+pub fn disk_free_gb(folder: String) -> Result<f64, String> {
+    let path = PathBuf::from(&folder);
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let bytes = fs2::available_space(&path).map_err(|e| e.to_string())?;
+    Ok(bytes as f64 / 1_000_000_000.0)
+}
+
 #[tauri::command]
 pub fn default_output_folder(app: AppHandle) -> Result<String, String> {
     let dir = app
@@ -236,5 +246,12 @@ mod tests {
         assert!(!dir.join(&saved.filename).exists());
         assert_eq!(list_outputs(folder).unwrap().len(), 0);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn disk_free_reports_positive_space() {
+        let folder = std::env::temp_dir().to_string_lossy().to_string();
+        let gb = disk_free_gb(folder).unwrap();
+        assert!(gb > 0.0, "a real drive should report some free space");
     }
 }

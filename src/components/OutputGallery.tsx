@@ -25,6 +25,8 @@ interface GalleryProps {
   onDelete: (saved: SavedOutput) => void;
   onReveal: (saved: SavedOutput) => void;
   onAnimate: (saved: SavedOutput) => void;
+  onRetry: (job: JobView) => void;
+  onDismiss: (job: JobView) => void;
 }
 
 function mediaTag(url: string) {
@@ -117,7 +119,11 @@ function SavedCard(props: {
 }
 
 /** An in-flight / just-finished (not-yet-persisted) job. */
-function InFlightCard(props: { job: JobView }) {
+function InFlightCard(props: {
+  job: JobView;
+  onRetry: (j: JobView) => void;
+  onDismiss: (j: JobView) => void;
+}) {
   const s = () => props.job.status;
   return (
     <>
@@ -147,6 +153,16 @@ function InFlightCard(props: { job: JobView }) {
         <span class="job__prompt" title={props.job.prompt}>
           {props.job.prompt}
         </span>
+        <Show when={s().state === "error"}>
+          <div class="job__actions">
+            <Show when={props.job.request}>
+              <button type="button" onClick={() => props.onRetry(props.job)}>Retry</button>
+            </Show>
+            <button type="button" class="job__delete" onClick={() => props.onDismiss(props.job)}>
+              Dismiss
+            </button>
+          </div>
+        </Show>
       </div>
     </>
   );
@@ -163,7 +179,12 @@ export function OutputGallery(props: GalleryProps) {
           <For each={props.jobs}>
             {(job) => (
               <div class="job">
-                <Show when={job.saved} fallback={<InFlightCard job={job} />}>
+                <Show
+                  when={job.saved}
+                  fallback={
+                    <InFlightCard job={job} onRetry={props.onRetry} onDismiss={props.onDismiss} />
+                  }
+                >
                   <SavedCard
                     saved={job.saved!}
                     folder={props.outputFolder}

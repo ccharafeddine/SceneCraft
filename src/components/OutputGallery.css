@@ -92,10 +92,15 @@
 }
 
 .job__error {
-  padding: 16px;
-  font-size: 0.82rem;
+  padding: 14px;
+  font-size: 0.78rem;
+  line-height: 1.45;
   color: #c0392b;
-  text-align: center;
+  white-space: pre-line; /* preserve the OOM fix-order line breaks */
+  text-align: left;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .job__meta {
