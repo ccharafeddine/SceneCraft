@@ -22,6 +22,7 @@ pub fn run() {
             characters::get_ref_image,
             comfy::comfy_health,
             comfy::comfy_generate_image,
+            comfy::comfy_upload_image,
             keychain::set_api_key,
             keychain::has_api_key,
             keychain::delete_api_key,

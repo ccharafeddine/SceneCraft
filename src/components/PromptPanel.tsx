@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Character } from "../lib/characters";
 import type { BackendMode, VideoModel } from "../backends/types";
+import { fileToDataUrl } from "../lib/image";
 import "./PromptPanel.css";
 
 export interface GenerateInput {
@@ -12,11 +13,19 @@ export interface GenerateInput {
   videoModel: VideoModel;
   frames: number;
   fps: number;
+  /** Optional uploaded input image (data URL). */
+  inputImage?: string;
+  /** img2img denoise strength. */
+  denoise?: number;
 }
 
 interface PromptPanelProps {
   activeCharacters: Character[];
   backendMode: BackendMode;
+  mode: "image" | "video";
+  onModeChange: (mode: "image" | "video") => void;
+  inputImage: string | null;
+  onInputImageChange: (dataUrl: string | null) => void;
   onGenerate: (input: GenerateInput) => void;
 }
 
@@ -30,39 +39,67 @@ const SIZE_PRESETS = [
 
 export function PromptPanel(props: PromptPanelProps) {
   const [prompt, setPrompt] = createSignal("");
-  const [mode, setMode] = createSignal<"image" | "video">("image");
   const [showSettings, setShowSettings] = createSignal(false);
   const [sizeIdx, setSizeIdx] = createSignal(0);
   const [steps, setSteps] = createSignal(20);
   const [videoModel, setVideoModel] = createSignal<VideoModel>("ltx");
   const [frames, setFrames] = createSignal(49);
   const [fps] = createSignal(24);
+  const [denoise, setDenoise] = createSignal(0.7);
+  const [imgError, setImgError] = createSignal<string | null>(null);
 
   const canGenerate = () =>
-    prompt().trim().length > 0 || props.activeCharacters.length > 0;
+    prompt().trim().length > 0 || props.activeCharacters.length > 0 || !!props.inputImage;
 
-  // On Local (FLUX.1) only a single trained-LoRA character can render; anything
-  // else (untrained, or 2+) needs Cloud (FLUX.2). On Cloud there's no such block.
+  const isImg2Img = () =>
+    props.mode === "image" && !!props.inputImage && props.backendMode === "local";
+
   const localBlocked = () => {
     if (props.backendMode === "cloud") return false;
+    if (props.inputImage && props.mode === "video") return false; // animate ignores cast
     const cast = props.activeCharacters;
     if (cast.length === 0) return false;
     if (cast.length === 1 && cast[0].lora_path) return false;
     return true;
   };
 
+  function inputRole(): string {
+    if (props.mode === "video") return "starting frame — animate";
+    return props.backendMode === "cloud" ? "reference image" : "img2img source";
+  }
+
+  async function takeFile(file: File | undefined) {
+    if (!file || !file.type.startsWith("image/")) return;
+    setImgError(null);
+    try {
+      props.onInputImageChange(await fileToDataUrl(file));
+    } catch (e) {
+      setImgError(String(e));
+    }
+  }
+
+  function generateLabel(): string {
+    if (props.inputImage) {
+      if (props.mode === "video") return "Animate image";
+      return props.backendMode === "cloud" ? "Generate (reference)" : "Transform image";
+    }
+    return props.mode === "image" ? "Generate image" : "Generate video";
+  }
+
   function submit() {
     if (!canGenerate()) return;
     const size = SIZE_PRESETS[sizeIdx()];
     props.onGenerate({
       prompt: prompt().trim(),
-      mode: mode(),
+      mode: props.mode,
       width: size.w,
       height: size.h,
       steps: steps(),
       videoModel: videoModel(),
       frames: frames(),
       fps: fps(),
+      inputImage: props.inputImage ?? undefined,
+      denoise: denoise(),
     });
   }
 
@@ -75,8 +112,6 @@ export function PromptPanel(props: PromptPanelProps) {
 
   return (
     <section class="prompt">
-      {/* Active cast is auto-injected into the generation by routing; the user
-          never types trigger tokens. */}
       <div class="prompt__cast">
         <Show
           when={props.activeCharacters.length > 0}
@@ -97,6 +132,48 @@ export function PromptPanel(props: PromptPanelProps) {
         </p>
       </Show>
 
+      {/* Input image: upload or drag-drop. Animate it (Video), transform it
+          (Image, local img2img), or use as a reference (Image, Cloud). */}
+      <div
+        class="prompt__input-image"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          void takeFile(e.dataTransfer?.files?.[0]);
+        }}
+      >
+        <Show
+          when={props.inputImage}
+          fallback={
+            <label class="prompt__dropzone">
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => void takeFile(e.currentTarget.files?.[0])}
+              />
+              <span>Drop an image or click to upload — animate it (Video) or transform it (Image)</span>
+            </label>
+          }
+        >
+          <div class="prompt__preview">
+            <img class="prompt__preview-img" src={props.inputImage!} alt="input" />
+            <span class="prompt__preview-label">{inputRole()}</span>
+            <button
+              type="button"
+              class="prompt__preview-clear"
+              title="Remove"
+              onClick={() => props.onInputImageChange(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </Show>
+      </div>
+      <Show when={imgError()}>
+        <p class="prompt__warning">{imgError()}</p>
+      </Show>
+
       <textarea
         class="prompt__box"
         placeholder="Describe the scene… e.g. walking along the Great Wall at sunrise, wide shot"
@@ -111,16 +188,16 @@ export function PromptPanel(props: PromptPanelProps) {
           <button
             type="button"
             class="segmented__btn"
-            classList={{ "segmented__btn--active": mode() === "image" }}
-            onClick={() => setMode("image")}
+            classList={{ "segmented__btn--active": props.mode === "image" }}
+            onClick={() => props.onModeChange("image")}
           >
             Image
           </button>
           <button
             type="button"
             class="segmented__btn"
-            classList={{ "segmented__btn--active": mode() === "video" }}
-            onClick={() => setMode("video")}
+            classList={{ "segmented__btn--active": props.mode === "video" }}
+            onClick={() => props.onModeChange("video")}
           >
             Video
           </button>
@@ -133,7 +210,7 @@ export function PromptPanel(props: PromptPanelProps) {
         <span class="prompt__spacer" />
 
         <button type="button" class="btn btn--primary" disabled={!canGenerate()} onClick={submit}>
-          {mode() === "image" ? "Generate image" : "Generate video"}
+          {generateLabel()}
         </button>
       </div>
 
@@ -165,7 +242,24 @@ export function PromptPanel(props: PromptPanelProps) {
             />
           </label>
 
-          <Show when={mode() === "video"}>
+          <Show when={isImg2Img()}>
+            <label class="field-row">
+              <span class="field-row__label">
+                Denoise <span class="field-row__value">{denoise().toFixed(2)}</span>
+              </span>
+              <input
+                class="slider"
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={denoise()}
+                onInput={(e) => setDenoise(Number(e.currentTarget.value))}
+              />
+            </label>
+          </Show>
+
+          <Show when={props.mode === "video"}>
             <label class="field-row">
               <span class="field-row__label">Video model</span>
               <select

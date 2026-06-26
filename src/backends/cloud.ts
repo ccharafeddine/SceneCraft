@@ -59,13 +59,17 @@ export class CloudBackend implements GenerationBackend {
     // multiref -> the edit model with reference images; otherwise text-to-image.
     const refImagePaths =
       req.conditioning.kind === "multiref" ? req.conditioning.refImagePaths : [];
-    const model = refImagePaths.length > 0 ? cloud.editModel : cloud.textModel;
+    // Uploaded image (image-input feature) becomes a reference for FLUX.2.
+    const refDataUrls = req.inputImage ? [req.inputImage] : [];
+    const useEdit = refImagePaths.length > 0 || refDataUrls.length > 0;
+    const model = useEdit ? cloud.editModel : cloud.textModel;
 
     this.jobs.set(id, { id, state: "running", progress: 0, message: "Generating on fal…" });
     invoke<CloudImageResult>("cloud_generate_image", {
       model,
       prompt: req.prompt,
       refImagePaths,
+      refDataUrls,
       width: req.width,
       height: req.height,
       steps: req.steps,

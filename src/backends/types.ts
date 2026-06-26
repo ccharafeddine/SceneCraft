@@ -27,6 +27,10 @@ export interface ImageRequest {
   steps: number;
   /** Omitted -> backend picks a random seed. */
   seed?: number;
+  /** Optional input image (data URL): img2img (local) or reference (cloud). */
+  inputImage?: string;
+  /** img2img denoise strength (0..1): how much to change the input. */
+  denoise?: number;
 }
 
 export type VideoModel = "ltx" | "wan";
@@ -47,6 +51,8 @@ export interface VideoRequest {
   videoModel: VideoModel;
   frames: number; // length in frames (length seconds = frames / fps)
   fps: number;
+  /** Optional input frame (data URL) to animate directly, skipping the still stage. */
+  inputImage?: string;
 }
 
 export interface JobHandle {

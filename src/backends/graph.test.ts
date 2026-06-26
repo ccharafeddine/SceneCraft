@@ -171,3 +171,36 @@ describe("buildVideoGraph — Wan / character video rejected locally", () => {
     ).toThrow(LocalUnsupportedError);
   });
 });
+
+describe("buildImageGraph — img2img with an uploaded frame", () => {
+  const g = buildImageGraph({ ...base, conditioning: { kind: "none" }, denoise: 0.55 }, "up.png");
+  const idOf = (c: string) => Object.entries(g).find(([, n]) => n.class_type === c)![0];
+
+  it("encodes the uploaded image into the starting latent and sets denoise", () => {
+    expect(byClass(g, "LoadImage")!.inputs.image).toBe("up.png");
+    expect(byClass(g, "VAEEncode")!.inputs.pixels).toEqual([idOf("LoadImage"), 0]);
+    const ks = byClass(g, "KSampler")!;
+    expect(ks.inputs.latent_image).toEqual([idOf("VAEEncode"), 0]);
+    expect(ks.inputs.denoise).toBe(0.55);
+  });
+
+  it("drops the empty latent (now unused)", () => {
+    expect(byClass(g, "EmptySD3LatentImage")).toBeUndefined();
+  });
+});
+
+describe("buildVideoGraph — animate an uploaded frame (no still stage)", () => {
+  const g = buildVideoGraph({ ...videoBase }, "up.png");
+
+  it("feeds the uploaded LoadImage into LTX and skips the FLUX still", () => {
+    expect(byClass(g, "UnetLoaderGGUF")).toBeUndefined();
+    const i2v = byClass(g, "LTXVImgToVideo")!;
+    const imgRef = i2v.inputs.image as [string, number];
+    expect(g[imgRef[0]].class_type).toBe("LoadImage");
+    expect(g[imgRef[0]].inputs.image).toBe("up.png");
+  });
+
+  it("still produces the LTX clip output", () => {
+    expect(byClass(g, "SaveAnimatedWEBP")).toBeDefined();
+  });
+});

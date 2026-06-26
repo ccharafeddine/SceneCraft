@@ -63,6 +63,39 @@ Local generation is an NVIDIA/CUDA world. Apple Silicon runs local **image** gen
 
 The backend toggle exists precisely so hardware limits are never a hard block: train and generate what your card handles locally, flip to cloud for the rest.
 
+## Choosing the right model
+
+Practical guide to the generation models (derived from [`models.json`](./models.json)). Each has real trade-offs — pick by what you're making, not just by "best".
+
+### Images
+
+- **FLUX.1 dev** — *local default* (8GB via Q4_K_S GGUF). **Best:** photoreal and detailed single-subject scenes. **Limits:** no native multi-reference — locally it can do one *trained* character at a time; group scenes and reference-from-upload need cloud.
+- **FLUX.2** — cloud (BYOK), or 16GB+ local. **Best:** multi-reference — group scenes and reference-preservation (keep features from an uploaded image while changing context); higher quality ceiling. **Limits:** does not run on 8GB — needs the cloud backend or a 16GB+ card.
+
+### Video (image-to-video)
+
+- **LTX-Video** (2B distilled) — local, fits 8GB. **Best:** real-world / natural motion — fire, water, mist, slow camera moves. **Limits:** it **warps flat 2D / cartoon line art** (it's tuned for real-world motion), so stylized/cartoon character animation is weak locally — use the cloud / 16GB+ path for that. **Tip:** use **gentle, slow** motion prompts for the best results.
+- **Wan 2.2** — photoreal video; 14B wants 16GB+ (1.3B fits 8GB at low quality). **Best:** higher-fidelity photoreal motion. **Limits:** not the local default on 8GB — needs more VRAM or cloud.
+
+### img2img / transform tips
+
+Upload an image in **Image** mode and the **Denoise** slider (Output settings) controls how much it changes:
+
+- **~0.3** — subtle edits, stays close to the original.
+- **~0.7–0.8** — big style transforms ("watercolor", "as an oil painting").
+
+A **low** denoise barely touches the image — so if a transform "isn't working" (the result looks like the input), **raise the denoise**.
+
+### Quick recommendations
+
+| Want | Use |
+|---|---|
+| Photoreal stills | **FLUX.1** (local) |
+| Group scenes / reference-preservation | **FLUX.2** (cloud) |
+| Natural-motion video (water, fire, slow pans) | **LTX** (local) |
+| Cartoon / stylized character video | **Cloud / 16GB+** (LTX warps line art locally) |
+| Quick style transform of an image | **img2img**, denoise ~0.7 |
+
 ## Quick start
 
 ```bash

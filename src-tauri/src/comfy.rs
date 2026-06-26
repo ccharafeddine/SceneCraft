@@ -15,7 +15,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::characters::{base64_encode, sniff_mime};
+use crate::characters::{base64_decode, base64_encode, sniff_mime};
 
 #[derive(Serialize)]
 pub struct GenResult {
@@ -70,6 +70,59 @@ pub async fn comfy_generate_image(
     })
     .await
     .map_err(|e| format!("generation task failed: {e}"))?
+}
+
+/// Upload an image (data URL) to ComfyUI's input folder so a graph's LoadImage
+/// node can reference it. Returns the input filename ComfyUI assigned.
+#[tauri::command]
+pub async fn comfy_upload_image(endpoint: String, data_url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || upload_image(&normalize(&endpoint), &data_url))
+        .await
+        .map_err(|e| format!("upload task failed: {e}"))?
+}
+
+fn upload_image(base: &str, data_url: &str) -> Result<String, String> {
+    let rest = data_url.strip_prefix("data:").ok_or("not a data URL")?;
+    let (mime_part, b64) = rest.split_once(',').ok_or("malformed data URL")?;
+    let mime = mime_part.split(';').next().unwrap_or("image/png");
+    let bytes = base64_decode(b64)?;
+    let ext = match mime {
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        _ => "png",
+    };
+    let filename = format!("scenecraft_upload.{ext}");
+    let boundary = "----scenecraftFormBoundary7MA4YWxkTrZu0gW";
+
+    // Hand-built multipart/form-data (field name "image"), avoiding a new dep.
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(&bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let resp = ureq::post(&format!("{base}/upload/image"))
+        .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
+        .timeout(Duration::from_secs(60))
+        .send_bytes(&body)
+        .map_err(|e| match e {
+            ureq::Error::Transport(_) => unreachable(base),
+            ureq::Error::Status(code, r) => {
+                format!("ComfyUI upload failed (HTTP {code}): {}", r.into_string().unwrap_or_default())
+            }
+        })?;
+    let v: Value = resp.into_json().map_err(|e| e.to_string())?;
+    let name = v.get("name").and_then(|n| n.as_str()).ok_or("upload: no name in response")?;
+    let subfolder = v.get("subfolder").and_then(|s| s.as_str()).unwrap_or("");
+    Ok(if subfolder.is_empty() {
+        name.to_string()
+    } else {
+        format!("{subfolder}/{name}")
+    })
 }
 
 /// Core of `comfy_generate_image`, split out so it can be exercised directly by

@@ -57,6 +57,8 @@ pub async fn cloud_generate_image(
     model: String,
     prompt: String,
     ref_image_paths: Vec<String>,
+    // Uploaded reference images already as data URLs (image-input feature).
+    ref_data_urls: Vec<String>,
     width: u32,
     height: u32,
     steps: u32,
@@ -64,7 +66,8 @@ pub async fn cloud_generate_image(
 ) -> Result<GenResult, String> {
     let key = read_api_key("fal")?
         .ok_or("No fal.ai API key set. Add it in Settings to use the Cloud backend.")?;
-    let refs = resolve_refs(&app, &ref_image_paths)?;
+    let mut refs = resolve_refs(&app, &ref_image_paths)?;
+    refs.extend(ref_data_urls);
     tauri::async_runtime::spawn_blocking(move || {
         fal_image(&key, &model, &prompt, &refs, width, height, steps, seed)
     })

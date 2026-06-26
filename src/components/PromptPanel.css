@@ -55,6 +55,64 @@
   }
 }
 
+/* input image */
+.prompt__dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 14px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.prompt__dropzone:hover {
+  border-color: var(--accent);
+}
+
+.prompt__preview {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.prompt__preview-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.prompt__preview-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.prompt__preview-clear {
+  margin-left: 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.prompt__preview-clear:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
 .prompt__box {
   width: 100%;
   resize: vertical;

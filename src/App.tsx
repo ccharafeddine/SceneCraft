@@ -19,10 +19,12 @@ import {
   defaultOutputFolder,
   deleteOutput,
   listOutputs,
+  readOutput,
   revealOutput,
   saveOutput,
   type SavedOutput,
 } from "./lib/outputs";
+import { resizeDataUrl } from "./lib/image";
 import {
   createCharacter,
   listCharacters,
@@ -43,6 +45,10 @@ function App() {
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [jobs, setJobs] = createSignal<JobView[]>([]);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  // Generation mode + optional uploaded input image (lifted here so the gallery's
+  // "Animate" action can populate them).
+  const [mode, setMode] = createSignal<"image" | "video">("image");
+  const [inputImage, setInputImage] = createSignal<string | null>(null);
 
   const stored = localStorage.getItem("backendMode");
   const [backendMode, setBackendModeRaw] = createSignal<BackendMode>(
@@ -171,6 +177,8 @@ function App() {
       height: input.height,
       steps: input.steps,
       seed: randomSeed(),
+      inputImage: input.inputImage,
+      denoise: input.denoise,
     };
   }
 
@@ -186,6 +194,7 @@ function App() {
       videoModel: input.videoModel,
       frames: input.frames,
       fps: input.fps,
+      inputImage: input.inputImage,
     };
   }
 
@@ -281,6 +290,17 @@ function App() {
     void revealOutput(outputFolder(), saved.filename).catch((e) => setError(String(e)));
   }
 
+  /** Animate a gallery image: load it as the input frame and switch to Video. */
+  async function animate(saved: SavedOutput) {
+    try {
+      const dataUrl = await readOutput(outputFolder(), saved.filename);
+      setInputImage(await resizeDataUrl(dataUrl, 1024));
+      setMode("video");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   return (
     <div class="layout">
       <CastPanel
@@ -313,6 +333,10 @@ function App() {
         <PromptPanel
           activeCharacters={activeCharacters()}
           backendMode={backendMode()}
+          mode={mode()}
+          onModeChange={setMode}
+          inputImage={inputImage()}
+          onInputImageChange={setInputImage}
           onGenerate={handleGenerate}
         />
         <OutputGallery
@@ -321,6 +345,7 @@ function App() {
           onRerun={rerun}
           onDelete={deleteItem}
           onReveal={revealItem}
+          onAnimate={animate}
         />
       </main>
 

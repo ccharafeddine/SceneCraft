@@ -57,7 +57,8 @@ export class LocalBackend implements GenerationBackend {
   async generateImage(req: ImageRequest): Promise<JobHandle> {
     const id = nextId("img");
     try {
-      this.submit(id, buildImageGraph(req), "image");
+      const inputName = req.inputImage ? await this.upload(req.inputImage) : undefined;
+      this.submit(id, buildImageGraph(req, inputName), "image");
     } catch (err) {
       this.jobs.set(id, { id, state: "error", progress: 0, error: messageFor(err) });
     }
@@ -67,11 +68,18 @@ export class LocalBackend implements GenerationBackend {
   async generateVideo(req: VideoRequest): Promise<JobHandle> {
     const id = nextId("vid");
     try {
-      this.submit(id, buildVideoGraph(req), "video");
+      const inputName = req.inputImage ? await this.upload(req.inputImage) : undefined;
+      this.submit(id, buildVideoGraph(req, inputName), "video");
     } catch (err) {
       this.jobs.set(id, { id, state: "error", progress: 0, error: messageFor(err) });
     }
     return { id, kind: "video" };
+  }
+
+  /** Upload a data-URL image to ComfyUI's input folder; returns the filename
+   *  a LoadImage node references. */
+  private upload(dataUrl: string): Promise<string> {
+    return invoke<string>("comfy_upload_image", { endpoint: this.endpoint, dataUrl });
   }
 
   async pollJob(id: string): Promise<JobStatus> {

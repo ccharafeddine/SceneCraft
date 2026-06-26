@@ -51,7 +51,12 @@ function positiveNodeId(graph: Graph): string | undefined {
   return id && graph[id]?.class_type === "CLIPTextEncode" ? id : undefined;
 }
 
-export function buildImageGraph(req: ImageRequest): Graph {
+/**
+ * Build the FLUX image graph. With `inputImageName` (an image already uploaded
+ * to ComfyUI's input folder), it becomes img2img: the uploaded frame is encoded
+ * to the starting latent and `denoise` controls how much it changes.
+ */
+export function buildImageGraph(req: ImageRequest, inputImageName?: string): Graph {
   if (req.conditioning.kind === "multiref") {
     // FLUX.1 local can't do this; surface it rather than build a wrong graph.
     throw new LocalUnsupportedError(MULTIREF_LOCAL_MESSAGE);
@@ -94,11 +99,37 @@ export function buildImageGraph(req: ImageRequest): Graph {
     graph[posId].inputs.text = req.prompt;
   }
 
+  if (inputImageName) {
+    injectImg2Img(graph, inputImageName, req.denoise ?? 0.7);
+  }
+
   if (req.conditioning.kind === "lora") {
     injectLora(graph, req.conditioning, posId);
   }
 
   return graph;
+}
+
+/**
+ * img2img: encode the uploaded frame to the starting latent (replacing the empty
+ * latent) and set the sampler's denoise. denoise 1.0 ignores the input; lower
+ * keeps more of it. The image is already uploaded to ComfyUI (LoadImage by name).
+ */
+function injectImg2Img(graph: Graph, inputImageName: string, denoise: number) {
+  const vaeId = findNodeId(graph, "VAELoader");
+  const ksId = findNodeId(graph, "KSampler");
+  if (!vaeId || !ksId) return;
+
+  const loadId = "img2img_load";
+  const encId = "img2img_encode";
+  graph[loadId] = { class_type: "LoadImage", inputs: { image: inputImageName } };
+  graph[encId] = { class_type: "VAEEncode", inputs: { pixels: [loadId, 0], vae: [vaeId, 0] } };
+  graph[ksId].inputs.latent_image = [encId, 0];
+  graph[ksId].inputs.denoise = denoise;
+
+  // The empty latent is now unused — drop it.
+  const emptyId = findNodeId(graph, "EmptySD3LatentImage");
+  if (emptyId) delete graph[emptyId];
 }
 
 /**
@@ -153,31 +184,9 @@ function ltxLength(frames: number): number {
  * routing: 0 chars -> plain still, trained LoRA -> lora still, multiref ->
  * throws (blocked). Verified end-to-end in Step 11.
  */
-export function buildVideoGraph(req: VideoRequest): Graph {
-  if (req.videoModel !== "ltx") {
-    // Wan (and any photoreal large model) is 16GB+/cloud, not local 8GB.
-    throw new LocalUnsupportedError(
-      "Local video is LTX-Video only. Wan (photoreal) needs a 16GB+ card or the " +
-        "Cloud backend. Switch the video model to LTX for local generation.",
-    );
-  }
-
-  // Stage 1: the still (throws LocalUnsupportedError for multiref, same as image).
-  const still = buildImageGraph({
-    prompt: req.prompt,
-    conditioning: req.conditioning,
-    baseModel: req.baseModel,
-    width: req.width,
-    height: req.height,
-    steps: req.steps,
-    seed: req.seed,
-  });
-  // Drop the still's SaveImage so the only image output is the animated clip.
-  const saveId = findNodeId(still, "SaveImage");
-  if (saveId) delete still[saveId];
-  const stillImageNode = findNodeId(still, "VAEDecode");
-
-  // Stage 2: LTX, sourced from the registry, fed the still's decoded frame.
+/** Fill the LTX template from the registry + request (everything but the input
+ *  frame, which the caller wires). */
+function fillLtxTemplate(req: VideoRequest): Graph {
   const ltx = structuredClone(ltxTemplate) as unknown as Graph;
   const ltxModel = modelById("ltx-video");
   const t5 = MODELS.find(
@@ -192,7 +201,6 @@ export function buildVideoGraph(req: VideoRequest): Graph {
         node.inputs.clip_name = basename(t5?.source.filename);
         break;
       case "LTXVImgToVideo":
-        node.inputs.image = [stillImageNode, 0];
         node.inputs.width = round32(req.width);
         node.inputs.height = round32(req.height);
         node.inputs.length = ltxLength(req.frames);
@@ -208,14 +216,57 @@ export function buildVideoGraph(req: VideoRequest): Graph {
         break;
     }
   }
-  // LTX motion prompt = the user's scene prompt (the still already locked
-  // identity). The positive node is the CLIPTextEncode feeding LTXVImgToVideo.
   const i2v = Object.values(ltx).find((n) => n.class_type === "LTXVImgToVideo");
   const ltxPosRef = i2v?.inputs.positive as [string, number] | undefined;
   const ltxPosId = ltxPosRef?.[0];
   if (ltxPosId && ltx[ltxPosId]?.class_type === "CLIPTextEncode" && req.prompt) {
     ltx[ltxPosId].inputs.text = req.prompt;
   }
+  return ltx;
+}
+
+/**
+ * Image-to-video (LTX). Two sources for the input frame, same animate path:
+ *   - `inputImageName` set: animate the user's uploaded frame directly (the
+ *     image-input feature). Identity comes from the upload, so no still stage.
+ *   - otherwise: generate the identity-locked FLUX still first, then animate it
+ *     (text-to-video; the still inherits character conditioning).
+ */
+export function buildVideoGraph(req: VideoRequest, inputImageName?: string): Graph {
+  if (req.videoModel !== "ltx") {
+    // Wan (and any photoreal large model) is 16GB+/cloud, not local 8GB.
+    throw new LocalUnsupportedError(
+      "Local video is LTX-Video only. Wan (photoreal) needs a 16GB+ card or the " +
+        "Cloud backend. Switch the video model to LTX for local generation.",
+    );
+  }
+
+  const ltx = fillLtxTemplate(req);
+  const i2v = findNodeId(ltx, "LTXVImgToVideo")!;
+
+  if (inputImageName) {
+    // Animate the uploaded frame directly — no FLUX still.
+    const loadId = "video_load";
+    ltx[i2v].inputs.image = [loadId, 0];
+    return {
+      [loadId]: { class_type: "LoadImage", inputs: { image: inputImageName } },
+      ...ltx,
+    };
+  }
+
+  // Text-to-video: FLUX still (inherits conditioning; throws for multiref) -> LTX.
+  const still = buildImageGraph({
+    prompt: req.prompt,
+    conditioning: req.conditioning,
+    baseModel: req.baseModel,
+    width: req.width,
+    height: req.height,
+    steps: req.steps,
+    seed: req.seed,
+  });
+  const saveId = findNodeId(still, "SaveImage");
+  if (saveId) delete still[saveId];
+  ltx[i2v].inputs.image = [findNodeId(still, "VAEDecode")!, 0];
 
   return { ...still, ...ltx };
 }

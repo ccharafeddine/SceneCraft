@@ -24,6 +24,7 @@ interface GalleryProps {
   onRerun: (saved: SavedOutput) => void;
   onDelete: (saved: SavedOutput) => void;
   onReveal: (saved: SavedOutput) => void;
+  onAnimate: (saved: SavedOutput) => void;
 }
 
 function mediaTag(url: string) {
@@ -59,6 +60,7 @@ function SavedCard(props: {
   onRerun: (s: SavedOutput) => void;
   onDelete: (s: SavedOutput) => void;
   onReveal: (s: SavedOutput) => void;
+  onAnimate: (s: SavedOutput) => void;
 }) {
   const [src] = createResource(
     () => props.saved.filename,
@@ -100,6 +102,9 @@ function SavedCard(props: {
         </span>
         <span class="job__submeta">{meta()}</span>
         <div class="job__actions">
+          <Show when={props.saved.kind === "image"}>
+            <button type="button" onClick={() => props.onAnimate(props.saved)}>Animate</button>
+          </Show>
           <button type="button" onClick={() => props.onReveal(props.saved)}>Open location</button>
           <button type="button" onClick={() => props.onRerun(props.saved)}>Re-run</button>
           <button type="button" class="job__delete" onClick={() => props.onDelete(props.saved)}>
@@ -165,6 +170,7 @@ export function OutputGallery(props: GalleryProps) {
                     onRerun={props.onRerun}
                     onDelete={props.onDelete}
                     onReveal={props.onReveal}
+                    onAnimate={props.onAnimate}
                   />
                 </Show>
               </div>
